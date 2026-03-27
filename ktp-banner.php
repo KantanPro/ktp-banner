@@ -3,7 +3,7 @@
  * Plugin Name: KTP Banner
  * Plugin URI: https://example.com
  * Description: KantanPro 向けに任意のバナー広告を表示するプラグインです。
- * Version: 1.0.2
+ * Version: 1.0.3
  * Author: KantanPro
  * License: GPL-2.0-or-later
  * Text Domain: ktp-banner
@@ -306,7 +306,7 @@ final class KTP_Banner_Plugin {
 			return $output;
 		}
 
-		$wrapped_banner = '<div class="ktp-before-header-banner" style="text-align:center;margin:0;">' . $banner_html . '</div>';
+		$wrapped_banner = '<div class="ktp-before-header-banner" style="width:100%;max-width:100%;margin:0;text-align:center;box-sizing:border-box;">' . $banner_html . '</div>';
 		return $wrapped_banner . $output;
 	}
 
@@ -421,15 +421,18 @@ final class KTP_Banner_Plugin {
 		}
 
 		$image_tag = sprintf(
-			'<img src="%1$s" alt="%2$s" style="max-width:50%%;height:auto;" />',
+			'<img src="%1$s" alt="%2$s" style="width:100%%;max-width:100%%;height:auto;display:block;vertical-align:top;" />',
 			$image_url,
 			$alt_text
 		);
 
+		$wrap_style = 'width:100%;max-width:100%;box-sizing:border-box;';
+
 		if ( '' !== $link_url ) {
 			return sprintf(
-				'<div class="%1$s"><a href="%2$s"%3$s>%4$s</a></div>',
+				'<div class="%1$s" style="%2$s"><a href="%3$s"%4$s style="display:block;width:100%%;line-height:0;">%5$s</a></div>',
 				esc_attr( $class ),
+				esc_attr( $wrap_style ),
 				$link_url,
 				$target,
 				$image_tag
@@ -437,8 +440,9 @@ final class KTP_Banner_Plugin {
 		}
 
 		return sprintf(
-			'<div class="%1$s">%2$s</div>',
+			'<div class="%1$s" style="%2$s">%3$s</div>',
 			esc_attr( $class ),
+			esc_attr( $wrap_style ),
 			$image_tag
 		);
 	}
