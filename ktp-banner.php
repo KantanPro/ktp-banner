@@ -3,7 +3,7 @@
  * Plugin Name: KTP Banner
  * Plugin URI: https://example.com
  * Description: KantanPro 向けに任意のバナー広告を表示するプラグインです。
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: KantanPro
  * License: GPL-2.0-or-later
  * Text Domain: ktp-banner
@@ -41,6 +41,7 @@ final class KTP_Banner_Plugin {
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_assets' ) );
 		add_action( 'init', array( $this, 'register_display_hook_from_settings' ) );
 		add_action( 'admin_notices', array( $this, 'render_admin_banner_notice' ) );
+		add_filter( 'do_shortcode_tag', array( $this, 'inject_banner_into_kantanpro_shortcode_output' ), 20, 4 );
 		add_shortcode( 'ktp_banner', array( $this, 'render_banner_shortcode' ) );
 	}
 
@@ -274,6 +275,37 @@ final class KTP_Banner_Plugin {
 	}
 
 	/**
+	 * KantanProショートコード出力の先頭にバナーを差し込む。
+	 * 本番環境でKantanPro側修正が未適用でも表示できるようにする。
+	 *
+	 * @param string $output ショートコード出力
+	 * @param string $tag ショートコードタグ
+	 * @param array  $attr 属性
+	 * @param array  $m マッチ情報
+	 *
+	 * @return string
+	 */
+	public function inject_banner_into_kantanpro_shortcode_output( $output, $tag, $attr, $m ) {
+		$target_tags = array( 'ktpwp_all_tab', 'kantanAllTab' );
+		if ( ! in_array( $tag, $target_tags, true ) ) {
+			return $output;
+		}
+
+		$banner_html = $this->get_banner_html( 'ktp-banner-shortcode-inject' );
+		if ( '' === $banner_html ) {
+			return $output;
+		}
+
+		// 既に同一バナーが含まれている場合は重複挿入しない
+		if ( false !== strpos( $output, 'ktp-banner-shortcode-inject' ) ) {
+			return $output;
+		}
+
+		$wrapped_banner = '<div class="ktp-before-header-banner" style="text-align:center;margin:0;">' . $banner_html . '</div>';
+		return $wrapped_banner . $output;
+	}
+
+	/**
 	 * KantanPro 管理画面でのみバナーを表示。
 	 *
 	 * @return void
@@ -339,7 +371,8 @@ final class KTP_Banner_Plugin {
 
 		$hook_name = isset( $options['display_hook'] ) ? $options['display_hook'] : '';
 		if ( '' === $hook_name ) {
-			return;
+			// 旧バージョンの保存データ互換: 空の場合はデフォルトフックを使う
+			$hook_name = 'ktpwp_between_pagination_footer';
 		}
 
 		if ( isset( $registered_hooks[ $hook_name ] ) ) {
@@ -383,7 +416,7 @@ final class KTP_Banner_Plugin {
 		}
 
 		$image_tag = sprintf(
-			'<img src="%1$s" alt="%2$s" style="max-width:100%%;height:auto;" />',
+			'<img src="%1$s" alt="%2$s" style="max-width:50%%;height:auto;" />',
 			$image_url,
 			$alt_text
 		);
