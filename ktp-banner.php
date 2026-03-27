@@ -3,7 +3,7 @@
  * Plugin Name: KTP Banner
  * Plugin URI: https://example.com
  * Description: KantanPro 向けに任意のバナー広告を表示するプラグインです。
- * Version: 1.0.1
+ * Version: 1.0.2
  * Author: KantanPro
  * License: GPL-2.0-or-later
  * Text Domain: ktp-banner
@@ -291,13 +291,18 @@ final class KTP_Banner_Plugin {
 			return $output;
 		}
 
-		$banner_html = $this->get_banner_html( 'ktp-banner-shortcode-inject' );
-		if ( '' === $banner_html ) {
+		// 既にKantanPro側または他経路でバナーが描画済みなら、差し込みしない
+		if (
+			false !== strpos( $output, 'ktp-before-header-banner' ) ||
+			false !== strpos( $output, 'ktp-banner-hook' ) ||
+			false !== strpos( $output, 'ktp-banner-fallback' ) ||
+			false !== strpos( $output, 'ktp-banner-shortcode-inject' )
+		) {
 			return $output;
 		}
 
-		// 既に同一バナーが含まれている場合は重複挿入しない
-		if ( false !== strpos( $output, 'ktp-banner-shortcode-inject' ) ) {
+		$banner_html = $this->get_banner_html( 'ktp-banner-shortcode-inject' );
+		if ( '' === $banner_html ) {
 			return $output;
 		}
 
