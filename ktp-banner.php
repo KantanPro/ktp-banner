@@ -3,7 +3,7 @@
  * Plugin Name: KTP Banner
  * Plugin URI: https://example.com
  * Description: KantanPro 向けに任意のバナー広告を表示するプラグインです。
- * Version: 1.0.4
+ * Version: 1.0.5
  * Author: KantanPro
  * License: GPL-2.0-or-later
  * Text Domain: ktp-banner
@@ -52,13 +52,14 @@ final class KTP_Banner_Plugin {
 	 */
 	public static function activate() {
 		$defaults = array(
-			'enabled'       => 1,
-			'image_url'     => '',
-			'link_url'      => '',
-			'alt_text'      => '',
-			'open_new_tab'  => 1,
-			'display_admin' => 1,
-			'display_hook'  => 'ktpwp_between_pagination_footer',
+			'enabled'        => 1,
+			'image_url'      => '',
+			'link_url'       => '',
+			'alt_text'       => '',
+			'open_new_tab'   => 1,
+			'display_admin'  => 1,
+			'display_hook'   => 'ktpwp_between_pagination_footer',
+			'frontend_hook'  => '',
 		);
 
 		if ( false === get_option( self::OPTION_KEY ) ) {
@@ -97,13 +98,14 @@ final class KTP_Banner_Plugin {
 		);
 
 		$fields = array(
-			'enabled'       => __( '有効化', 'ktp-banner' ),
-			'image_url'     => __( '画像URL', 'ktp-banner' ),
-			'link_url'      => __( 'リンクURL', 'ktp-banner' ),
-			'alt_text'      => __( '代替テキスト', 'ktp-banner' ),
-			'open_new_tab'  => __( '新しいタブで開く', 'ktp-banner' ),
-			'display_admin' => __( 'KantanPro管理画面で表示', 'ktp-banner' ),
-			'display_hook'  => __( '追加表示フック名（任意）', 'ktp-banner' ),
+			'enabled'        => __( '有効化', 'ktp-banner' ),
+			'image_url'      => __( '画像URL', 'ktp-banner' ),
+			'link_url'       => __( 'リンクURL', 'ktp-banner' ),
+			'alt_text'       => __( '代替テキスト', 'ktp-banner' ),
+			'open_new_tab'   => __( '新しいタブで開く', 'ktp-banner' ),
+			'display_admin'  => __( 'KantanPro管理画面で表示', 'ktp-banner' ),
+			'frontend_hook'  => __( 'サイト全体の表示位置（KantanProなし向け）', 'ktp-banner' ),
+			'display_hook'   => __( '追加表示フック名（任意）', 'ktp-banner' ),
 		);
 
 		foreach ( $fields as $field_key => $label ) {
@@ -156,14 +158,18 @@ final class KTP_Banner_Plugin {
 	 * @return array
 	 */
 	public function sanitize_options( $input ) {
+		$frontend_raw = isset( $input['frontend_hook'] ) ? $input['frontend_hook'] : '';
+		$frontend_ok  = in_array( $frontend_raw, array( 'wp_footer', 'wp_body_open' ), true ) ? $frontend_raw : '';
+
 		$output = array(
-			'enabled'       => empty( $input['enabled'] ) ? 0 : 1,
-			'image_url'     => empty( $input['image_url'] ) ? '' : esc_url_raw( $input['image_url'] ),
-			'link_url'      => empty( $input['link_url'] ) ? '' : esc_url_raw( $input['link_url'] ),
-			'alt_text'      => empty( $input['alt_text'] ) ? '' : sanitize_text_field( $input['alt_text'] ),
-			'open_new_tab'  => empty( $input['open_new_tab'] ) ? 0 : 1,
-			'display_admin' => empty( $input['display_admin'] ) ? 0 : 1,
-			'display_hook'  => empty( $input['display_hook'] ) ? 'ktpwp_between_pagination_footer' : sanitize_key( $input['display_hook'] ),
+			'enabled'        => empty( $input['enabled'] ) ? 0 : 1,
+			'image_url'      => empty( $input['image_url'] ) ? '' : esc_url_raw( $input['image_url'] ),
+			'link_url'       => empty( $input['link_url'] ) ? '' : esc_url_raw( $input['link_url'] ),
+			'alt_text'       => empty( $input['alt_text'] ) ? '' : sanitize_text_field( $input['alt_text'] ),
+			'open_new_tab'   => empty( $input['open_new_tab'] ) ? 0 : 1,
+			'display_admin'  => empty( $input['display_admin'] ) ? 0 : 1,
+			'frontend_hook'  => $frontend_ok,
+			'display_hook'   => empty( $input['display_hook'] ) ? 'ktpwp_between_pagination_footer' : sanitize_key( $input['display_hook'] ),
 		);
 
 		return $output;
@@ -214,6 +220,24 @@ final class KTP_Banner_Plugin {
 					esc_attr( $name_attr ),
 					esc_attr( $value )
 				);
+				break;
+			case 'frontend_hook':
+				$choices = array(
+					''              => __( '表示しない（ショートコード [ktp_banner] または KantanPro のみ）', 'ktp-banner' ),
+					'wp_footer'     => __( '全ページ・フッター直前（wp_footer）', 'ktp-banner' ),
+					'wp_body_open'  => __( '全ページ・body 開始直後（wp_body_open・テーマ対応が必要）', 'ktp-banner' ),
+				);
+				echo '<select name="' . esc_attr( $name_attr ) . '" id="ktp-banner-frontend-hook">';
+				foreach ( $choices as $val => $label ) {
+					printf(
+						'<option value="%1$s" %3$s>%2$s</option>',
+						esc_attr( $val ),
+						esc_html( $label ),
+						selected( $value, $val, false )
+					);
+				}
+				echo '</select>';
+				echo '<p class="description">' . esc_html__( 'KantanPro がないサイトでは、従来の「追加表示フック」だけでは表示されません。外部サイト全体にバナーを出す場合は「wp_footer」などを選んでください。KantanPro と併用する場合は重複しないよう、どちらか一方にしてください。', 'ktp-banner' ) . '</p>';
 				break;
 			case 'display_hook':
 				printf(
@@ -342,6 +366,7 @@ final class KTP_Banner_Plugin {
 	public function register_display_hook_from_settings() {
 		$options = $this->get_options();
 		$this->register_optional_hook( $options );
+		$this->register_frontend_wordpress_hook( $options );
 	}
 
 	/**
@@ -349,13 +374,14 @@ final class KTP_Banner_Plugin {
 	 */
 	private function get_options() {
 		$defaults = array(
-			'enabled'       => 1,
-			'image_url'     => '',
-			'link_url'      => '',
-			'alt_text'      => '',
-			'open_new_tab'  => 1,
-			'display_admin' => 1,
-			'display_hook'  => 'ktpwp_between_pagination_footer',
+			'enabled'        => 1,
+			'image_url'      => '',
+			'link_url'       => '',
+			'alt_text'       => '',
+			'open_new_tab'   => 1,
+			'display_admin'  => 1,
+			'display_hook'   => 'ktpwp_between_pagination_footer',
+			'frontend_hook'  => '',
 		);
 
 		$options = get_option( self::OPTION_KEY, array() );
@@ -395,12 +421,44 @@ final class KTP_Banner_Plugin {
 	}
 
 	/**
+	 * KantanPro 以外の通常テーマ向けに、WordPress 標準フックへバナーを登録する。
+	 *
+	 * @param array $options 保存済みオプション
+	 *
+	 * @return void
+	 */
+	private function register_frontend_wordpress_hook( $options ) {
+		static $registered = false;
+		if ( $registered ) {
+			return;
+		}
+
+		$hook_name = isset( $options['frontend_hook'] ) ? $options['frontend_hook'] : '';
+		if ( ! in_array( $hook_name, array( 'wp_footer', 'wp_body_open' ), true ) ) {
+			return;
+		}
+
+		add_action(
+			$hook_name,
+			function () {
+				if ( is_admin() ) {
+					return;
+				}
+				echo wp_kses_post( $this->get_banner_html( 'ktp-banner-frontend' ) );
+			},
+			5
+		);
+
+		$registered = true;
+	}
+
+	/**
 	 * @param string $extra_class 追加クラス
 	 *
 	 * @return string
 	 */
 	private function get_banner_html( $extra_class = '' ) {
-		$options = get_option( self::OPTION_KEY, array() );
+		$options = $this->get_options();
 
 		if ( empty( $options['enabled'] ) ) {
 			return '';
