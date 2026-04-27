@@ -514,16 +514,12 @@ final class KTP_Banner_Plugin {
 	}
 
 	/**
-	 * KantanProEX（配布版・KTPWP_EDITION が pro）ではバナーを表示しない。
+	 * KantanProEX（WP）が有効な場合のみ true を返す。
+	 * KTPWP_EDITION の値には依存せず、プラグイン実体で判定する。
 	 *
 	 * @return bool
 	 */
 	private function is_kantanproex_active() {
-		// 定数だけでは誤判定になる環境があるため、EX本体の有効化状態も併せて判定する。
-		if ( ! defined( 'KTPWP_EDITION' ) || 'pro' !== KTPWP_EDITION ) {
-			return false;
-		}
-
 		$possible_ex_basenames = array(
 			'KantanProEX/ktpwp.php',
 			'kantanproex/ktpwp.php',
