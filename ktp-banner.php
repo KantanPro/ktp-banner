@@ -524,7 +524,20 @@ final class KTP_Banner_Plugin {
 			return false;
 		}
 
-		return $this->is_plugin_active_by_basename( 'KantanProEX/ktpwp.php' );
+		$possible_ex_basenames = array(
+			'KantanProEX/ktpwp.php',
+			'kantanproex/ktpwp.php',
+			'kantanpro-ex/ktpwp.php',
+			'KantanPro-EX/ktpwp.php',
+		);
+
+		foreach ( $possible_ex_basenames as $basename ) {
+			if ( $this->is_plugin_active_by_basename( $basename ) ) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**
