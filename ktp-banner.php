@@ -3,7 +3,7 @@
  * Plugin Name: KTP Banner
  * Plugin URI: https://example.com
  * Description: KantanPro 向けに任意のバナー広告を表示するプラグインです。
- * Version: 1.0.7
+ * Version: 1.0.8
  * Author: KantanPro
  * License: GPL-2.0-or-later
  * Text Domain: ktp-banner
