@@ -519,7 +519,35 @@ final class KTP_Banner_Plugin {
 	 * @return bool
 	 */
 	private function is_kantanproex_active() {
-		return defined( 'KTPWP_EDITION' ) && 'pro' === KTPWP_EDITION;
+		// 定数だけでは誤判定になる環境があるため、EX本体の有効化状態も併せて判定する。
+		if ( ! defined( 'KTPWP_EDITION' ) || 'pro' !== KTPWP_EDITION ) {
+			return false;
+		}
+
+		return $this->is_plugin_active_by_basename( 'KantanProEX/ktpwp.php' );
+	}
+
+	/**
+	 * 指定プラグインが有効化済みか判定（マルチサイト対応）。
+	 *
+	 * @param string $plugin_basename プラグインベース名
+	 *
+	 * @return bool
+	 */
+	private function is_plugin_active_by_basename( $plugin_basename ) {
+		$active_plugins = (array) get_option( 'active_plugins', array() );
+		if ( in_array( $plugin_basename, $active_plugins, true ) ) {
+			return true;
+		}
+
+		if ( is_multisite() ) {
+			$network_active_plugins = (array) get_site_option( 'active_sitewide_plugins', array() );
+			if ( isset( $network_active_plugins[ $plugin_basename ] ) ) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**
