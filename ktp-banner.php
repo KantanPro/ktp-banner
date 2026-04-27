@@ -310,7 +310,11 @@ final class KTP_Banner_Plugin {
 	 * @return string
 	 */
 	public function inject_banner_into_kantanpro_shortcode_output( $output, $tag, $attr, $m ) {
-		$target_tags = array( 'ktpwp_all_tab', 'kantanAllTab' );
+		if ( $this->is_kantanproex_active() ) {
+			return $output;
+		}
+
+		$target_tags = array( 'ktpwp_all_tab', 'kantanAllTab', 'kantanpro_ex' );
 		if ( ! in_array( $tag, $target_tags, true ) ) {
 			return $output;
 		}
@@ -458,6 +462,10 @@ final class KTP_Banner_Plugin {
 	 * @return string
 	 */
 	private function get_banner_html( $extra_class = '' ) {
+		if ( $this->is_kantanproex_active() ) {
+			return '';
+		}
+
 		$options = $this->get_options();
 
 		if ( empty( $options['enabled'] ) ) {
@@ -503,6 +511,15 @@ final class KTP_Banner_Plugin {
 			esc_attr( $wrap_style ),
 			$image_tag
 		);
+	}
+
+	/**
+	 * KantanProEX（配布版・KTPWP_EDITION が pro）ではバナーを表示しない。
+	 *
+	 * @return bool
+	 */
+	private function is_kantanproex_active() {
+		return defined( 'KTPWP_EDITION' ) && 'pro' === KTPWP_EDITION;
 	}
 
 	/**
