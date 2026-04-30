@@ -3,10 +3,11 @@
  * Plugin Name: KTP Banner
  * Plugin URI: https://example.com
  * Description: KantanPro 向けに任意のバナー広告を表示するプラグインです。
- * Version: 1.0.11
+ * Version: 1.0.12
  * Author: KantanPro
  * License: GPL-2.0-or-later
  * Text Domain: ktp-banner
+ * Update URI: https://github.com/KantanPro/ktp-banner
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -620,3 +621,244 @@ final class KTP_Banner_Plugin {
 
 register_activation_hook( __FILE__, array( 'KTP_Banner_Plugin', 'activate' ) );
 KTP_Banner_Plugin::instance();
+
+final class KTP_Banner_Update_Checker {
+	const GITHUB_REPO = 'KantanPro/ktp-banner';
+	const CACHE_KEY   = 'ktp_banner_github_latest_release';
+
+	/**
+	 * @var string
+	 */
+	private $plugin_file;
+
+	/**
+	 * @var string
+	 */
+	private $plugin_basename;
+
+	/**
+	 * @var string
+	 */
+	private $plugin_slug;
+
+	/**
+	 * @var string
+	 */
+	private $current_version;
+
+	/**
+	 * @param string $plugin_file メインプラグインファイル
+	 */
+	public function __construct( $plugin_file ) {
+		$this->plugin_file      = $plugin_file;
+		$this->plugin_basename  = plugin_basename( $plugin_file );
+		$this->plugin_slug      = dirname( $this->plugin_basename );
+		$this->current_version  = $this->detect_current_version();
+
+		if ( is_admin() ) {
+			add_filter( 'pre_set_site_transient_update_plugins', array( $this, 'filter_update_transient' ) );
+			add_filter( 'plugins_api', array( $this, 'filter_plugins_api' ), 20, 3 );
+			add_filter( 'upgrader_source_selection', array( $this, 'rename_github_source' ), 10, 4 );
+			add_action( 'upgrader_process_complete', array( $this, 'clear_release_cache' ), 10, 2 );
+		}
+	}
+
+	/**
+	 * WordPress標準のプラグイン更新通知に GitHub Release を接続する。
+	 *
+	 * @param object $transient 更新 transient
+	 * @return object
+	 */
+	public function filter_update_transient( $transient ) {
+		if ( ! is_object( $transient ) ) {
+			$transient = new stdClass();
+		}
+
+		$release = $this->get_latest_release();
+		if ( ! $release || empty( $release['version'] ) ) {
+			return $transient;
+		}
+
+		if ( version_compare( $release['version'], $this->current_version, '<=' ) ) {
+			if ( isset( $transient->response[ $this->plugin_basename ] ) ) {
+				unset( $transient->response[ $this->plugin_basename ] );
+			}
+			return $transient;
+		}
+
+		$transient->response[ $this->plugin_basename ] = $this->build_update_object( $release );
+
+		return $transient;
+	}
+
+	/**
+	 * 「詳細を表示」モーダルへ GitHub Release の情報を返す。
+	 *
+	 * @param false|object|array $result 既存結果
+	 * @param string             $action APIアクション
+	 * @param object             $args   API引数
+	 * @return false|object|array
+	 */
+	public function filter_plugins_api( $result, $action, $args ) {
+		if ( 'plugin_information' !== $action || empty( $args->slug ) || $args->slug !== $this->plugin_slug ) {
+			return $result;
+		}
+
+		$release = $this->get_latest_release();
+		if ( ! $release ) {
+			return $result;
+		}
+
+		$info = new stdClass();
+		$info->name          = 'KTP Banner';
+		$info->slug          = $this->plugin_slug;
+		$info->version       = $release['version'];
+		$info->author        = 'KantanPro';
+		$info->homepage      = 'https://github.com/' . self::GITHUB_REPO;
+		$info->download_link = $release['package'];
+		$info->requires      = '6.0';
+		$info->tested        = '6.8';
+		$info->requires_php  = '7.4';
+		$info->last_updated  = $release['published_at'];
+		$info->sections      = array(
+			'description' => 'KantanPro 向けに任意のバナー広告を表示するプラグインです。',
+			'changelog'   => nl2br( esc_html( $release['body'] ) ),
+		);
+
+		return $info;
+	}
+
+	/**
+	 * 更新完了時に GitHub Release キャッシュを削除する。
+	 *
+	 * @param object $upgrader_object アップグレーダー
+	 * @param array  $options         更新オプション
+	 * @return void
+	 */
+	public function clear_release_cache( $upgrader_object, $options ) {
+		if ( empty( $options['action'] ) || empty( $options['type'] ) || 'update' !== $options['action'] || 'plugin' !== $options['type'] ) {
+			return;
+		}
+
+		if ( ! empty( $options['plugins'] ) && in_array( $this->plugin_basename, (array) $options['plugins'], true ) ) {
+			delete_site_transient( self::CACHE_KEY );
+		}
+	}
+
+	/**
+	 * GitHub zipball の展開フォルダをプラグインslugへ補正する。
+	 *
+	 * @param string      $source        展開元ディレクトリ
+	 * @param string      $remote_source 一時ディレクトリ
+	 * @param WP_Upgrader $upgrader      アップグレーダー
+	 * @param array       $hook_extra    更新情報
+	 * @return string|WP_Error
+	 */
+	public function rename_github_source( $source, $remote_source, $upgrader, $hook_extra = array() ) {
+		if ( empty( $hook_extra['plugin'] ) || $hook_extra['plugin'] !== $this->plugin_basename ) {
+			return $source;
+		}
+
+		if ( basename( untrailingslashit( $source ) ) === $this->plugin_slug ) {
+			return $source;
+		}
+
+		global $wp_filesystem;
+		if ( ! $wp_filesystem ) {
+			return $source;
+		}
+
+		$destination = trailingslashit( $remote_source ) . $this->plugin_slug;
+		if ( $wp_filesystem->exists( $destination ) ) {
+			$wp_filesystem->delete( $destination, true );
+		}
+
+		if ( ! $wp_filesystem->move( $source, $destination, true ) ) {
+			return new WP_Error( 'ktp_banner_github_source_rename_failed', __( 'KTP Banner の更新フォルダ名を補正できませんでした。', 'ktp-banner' ) );
+		}
+
+		return $destination;
+	}
+
+	/**
+	 * 更新通知用オブジェクトを生成する。
+	 *
+	 * @param array $release Release情報
+	 * @return object
+	 */
+	private function build_update_object( $release ) {
+		$update = new stdClass();
+		$update->id          = 'github.com/' . self::GITHUB_REPO;
+		$update->slug        = $this->plugin_slug;
+		$update->plugin      = $this->plugin_basename;
+		$update->new_version = $release['version'];
+		$update->url         = $release['url'];
+		$update->package     = $release['package'];
+		$update->requires    = '6.0';
+		$update->tested      = '6.8';
+		$update->requires_php = '7.4';
+
+		return $update;
+	}
+
+	/**
+	 * GitHub Releases API から最新Releaseを取得する。
+	 *
+	 * @return array|null
+	 */
+	private function get_latest_release() {
+		$cached = get_site_transient( self::CACHE_KEY );
+		if ( is_array( $cached ) ) {
+			return $cached;
+		}
+
+		$response = wp_remote_get(
+			'https://api.github.com/repos/' . self::GITHUB_REPO . '/releases/latest',
+			array(
+				'timeout' => 15,
+				'headers' => array(
+					'Accept'     => 'application/vnd.github+json',
+					'User-Agent' => 'KTP-Banner-Updater',
+				),
+			)
+		);
+
+		if ( is_wp_error( $response ) || 200 !== wp_remote_retrieve_response_code( $response ) ) {
+			return null;
+		}
+
+		$data = json_decode( wp_remote_retrieve_body( $response ), true );
+		if ( ! is_array( $data ) || empty( $data['tag_name'] ) || empty( $data['zipball_url'] ) ) {
+			return null;
+		}
+
+		$release = array(
+			'version'      => ltrim( sanitize_text_field( $data['tag_name'] ), 'v' ),
+			'url'          => isset( $data['html_url'] ) ? esc_url_raw( $data['html_url'] ) : 'https://github.com/' . self::GITHUB_REPO,
+			'package'      => esc_url_raw( $data['zipball_url'] ),
+			'body'         => isset( $data['body'] ) ? wp_kses_post( $data['body'] ) : '',
+			'published_at' => isset( $data['published_at'] ) ? sanitize_text_field( $data['published_at'] ) : '',
+		);
+
+		set_site_transient( self::CACHE_KEY, $release, 6 * HOUR_IN_SECONDS );
+
+		return $release;
+	}
+
+	/**
+	 * プラグインヘッダーから現在バージョンを取得する。
+	 *
+	 * @return string
+	 */
+	private function detect_current_version() {
+		if ( ! function_exists( 'get_plugin_data' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/plugin.php';
+		}
+
+		$plugin_data = get_plugin_data( $this->plugin_file, false, false );
+
+		return ! empty( $plugin_data['Version'] ) ? $plugin_data['Version'] : '0.0.0';
+	}
+}
+
+new KTP_Banner_Update_Checker( __FILE__ );
