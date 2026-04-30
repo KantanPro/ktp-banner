@@ -3,7 +3,7 @@
  * Plugin Name: KTP Banner
  * Plugin URI: https://example.com
  * Description: KantanPro 向けに任意のバナー広告を表示するプラグインです。
- * Version: 1.0.10
+ * Version: 1.0.11
  * Author: KantanPro
  * License: GPL-2.0-or-later
  * Text Domain: ktp-banner
@@ -520,8 +520,17 @@ final class KTP_Banner_Plugin {
 	 * @return bool
 	 */
 	private function is_kantanproex_active() {
+		if ( defined( 'KANTANPRO_PLUGIN_NAME' ) && 'KantanProEX' === KANTANPRO_PLUGIN_NAME ) {
+			return true;
+		}
+
+		if ( defined( 'KTPWP_EDITION' ) && 'pro' === KTPWP_EDITION && defined( 'KANTANPRO_PLUGIN_NAME' ) && 'KantanProEX' === KANTANPRO_PLUGIN_NAME ) {
+			return true;
+		}
+
 		$possible_ex_basenames = array(
 			'KantanProEX/ktpwp.php',
+			'KantanProEx/ktpwp.php',
 			'kantanproex/ktpwp.php',
 			'kantanpro-ex/ktpwp.php',
 			'KantanPro-EX/ktpwp.php',
@@ -533,7 +542,33 @@ final class KTP_Banner_Plugin {
 			}
 		}
 
+		foreach ( $this->get_active_plugin_basenames() as $active_plugin ) {
+			$plugin_file = basename( $active_plugin );
+			$plugin_dir  = dirname( $active_plugin );
+			$normalized_dir = strtolower( str_replace( array( '-', '_' ), '', $plugin_dir ) );
+
+			if ( 'ktpwp.php' === $plugin_file && 'kantanproex' === $normalized_dir ) {
+				return true;
+			}
+		}
+
 		return false;
+	}
+
+	/**
+	 * 有効化済みプラグインのベースネーム一覧を取得（マルチサイト対応）。
+	 *
+	 * @return array
+	 */
+	private function get_active_plugin_basenames() {
+		$active_plugins = (array) get_option( 'active_plugins', array() );
+
+		if ( is_multisite() ) {
+			$network_active_plugins = (array) get_site_option( 'active_sitewide_plugins', array() );
+			$active_plugins = array_merge( $active_plugins, array_keys( $network_active_plugins ) );
+		}
+
+		return array_values( array_unique( array_filter( $active_plugins ) ) );
 	}
 
 	/**
