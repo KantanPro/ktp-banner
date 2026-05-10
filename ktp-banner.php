@@ -3,7 +3,7 @@
  * Plugin Name: KTP Banner
  * Plugin URI: https://example.com
  * Description: KantanPro 向けに任意のバナー広告を表示するプラグインです。
- * Version: 1.0.12
+ * Version: 1.0.13
  * Author: KantanPro
  * License: GPL-2.0-or-later
  * Text Domain: ktp-banner
@@ -296,7 +296,7 @@ final class KTP_Banner_Plugin {
 			'ktp_banner'
 		);
 
-		return $this->get_banner_html( sanitize_html_class( $atts['class'] ) );
+		return $this->get_banner_html( sanitize_html_class( $atts['class'] ), true );
 	}
 
 	/**
@@ -459,11 +459,12 @@ final class KTP_Banner_Plugin {
 
 	/**
 	 * @param string $extra_class 追加クラス
+	 * @param bool   $allow_kantanproex KantanProEX環境でも明示表示を許可するか
 	 *
 	 * @return string
 	 */
-	private function get_banner_html( $extra_class = '' ) {
-		if ( $this->is_kantanproex_active() ) {
+	private function get_banner_html( $extra_class = '', $allow_kantanproex = false ) {
+		if ( ! $allow_kantanproex && $this->is_kantanproex_active() ) {
 			return '';
 		}
 
