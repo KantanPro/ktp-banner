@@ -5,7 +5,7 @@ KantanPro 向けに任意のバナー広告を表示する WordPress プラグ�
 ## プラグイン情報
 
 - プラグイン名: KTP Banner
-- バージョン: 1.0.13
+- バージョン: 1.0.14
 - 最終更新日: 2026-05-10
 - 対象: WordPress + KantanPro
 
@@ -59,7 +59,7 @@ do_action( 'kantanpro_after_header' );
 
 ## 更新履歴
 
-### 1.0.13 (2026-05-10)
+### 1.0.14 (2026-05-10)
 
 - KantanProEX が有効な環境でも、明示的に配置した `[ktp_banner]` は表示できるよう修正
 - 自動差し込み・フック表示・管理画面通知は従来どおり KantanProEX では非表示
