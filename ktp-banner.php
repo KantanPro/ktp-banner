@@ -3,7 +3,7 @@
  * Plugin Name: KTP Banner
  * Plugin URI: https://example.com
  * Description: KantanPro 向けに任意のバナー広告を表示するプラグインです。
- * Version: 1.1.3
+ * Version: 1.2.1
  * Author: KantanPro
  * License: GPL-2.0-or-later
  * Text Domain: ktp-banner
@@ -43,6 +43,7 @@ final class KTP_Banner_Plugin {
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_assets' ) );
 		add_action( 'wp_enqueue_scripts', array( $this, 'maybe_enqueue_frontend_assets' ) );
 		add_action( 'init', array( $this, 'register_display_hook_from_settings' ) );
+		add_action( 'init', array( $this, 'register_banner_block' ) );
 		add_action( 'widgets_init', array( $this, 'register_widget' ) );
 		add_action( 'admin_notices', array( $this, 'render_admin_banner_notice' ) );
 		add_filter( 'do_shortcode_tag', array( $this, 'inject_banner_into_kantanpro_shortcode_output' ), 20, 4 );
@@ -533,6 +534,7 @@ final class KTP_Banner_Plugin {
 				?>
 			</form>
 			<h2><?php echo esc_html__( '利用方法', 'ktp-banner' ); ?></h2>
+			<p><?php echo esc_html__( 'ブロックエディター: 「+」→「KTP Banner」ブロックを本文の任意位置に追加', 'ktp-banner' ); ?></p>
 			<p><?php echo esc_html__( 'ショートコード: [ktp_banner]', 'ktp-banner' ); ?></p>
 			<p><?php echo esc_html__( 'ウィジェット: 外観 > ウィジェット から「KTP Banner」を追加', 'ktp-banner' ); ?></p>
 		</div>
@@ -580,6 +582,76 @@ final class KTP_Banner_Plugin {
 	 */
 	public function register_widget() {
 		register_widget( 'KTP_Banner_Widget' );
+	}
+
+	/**
+	 * Gutenberg ブロックを登録する。
+	 *
+	 * @return void
+	 */
+	public function register_banner_block() {
+		if ( ! function_exists( 'register_block_type' ) ) {
+			return;
+		}
+
+		wp_register_script(
+			'ktp-banner-block-editor',
+			plugins_url( 'blocks/ktp-banner/index.js', __FILE__ ),
+			array(
+				'wp-blocks',
+				'wp-element',
+				'wp-block-editor',
+				'wp-components',
+				'wp-i18n',
+				'wp-server-side-render',
+			),
+			'1.2.1',
+			true
+		);
+
+		wp_register_style(
+			'ktp-banner-block-editor',
+			plugins_url( 'blocks/ktp-banner/editor.css', __FILE__ ),
+			array(),
+			'1.2.1'
+		);
+
+		register_block_type(
+			plugin_dir_path( __FILE__ ) . 'blocks/ktp-banner/block.json',
+			array(
+				'editor_script'   => 'ktp-banner-block-editor',
+				'editor_style'    => 'ktp-banner-block-editor',
+				'render_callback' => array( $this, 'render_banner_block' ),
+			)
+		);
+	}
+
+	/**
+	 * Gutenberg ブロックのフロントエンド出力。
+	 *
+	 * @param array    $attributes ブロック属性
+	 * @param string   $content    ブロックコンテンツ
+	 * @param WP_Block $block      ブロックインスタンス
+	 *
+	 * @return string
+	 */
+	public function render_banner_block( $attributes, $content, $block ) {
+		unset( $content, $block );
+
+		$html = $this->get_banner_markup( 'ktp-banner-block', true );
+		if ( '' === $html ) {
+			return '';
+		}
+
+		return sprintf(
+			'<div %1$s>%2$s</div>',
+			get_block_wrapper_attributes(
+				array(
+					'class' => 'ktp-banner-block-wrap',
+				)
+			),
+			$html
+		);
 	}
 
 	/**

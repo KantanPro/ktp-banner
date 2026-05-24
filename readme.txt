@@ -4,7 +4,7 @@ Tags: banner, ads, kantanpro
 Requires at least: 6.0
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.1.3
+Stable tag: 1.2.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -25,6 +25,7 @@ KTP Banner は、KantanPro 画面にバナー広告を表示するためのプ�
 * 管理画面通知表示
 * 複数バナーの登録とローテーション表示
 * ウィジェット（外観 > ウィジェット）からの表示
+* Gutenberg ブロック（KTP Banner）で本文の任意位置に挿入
 
 == Installation ==
 
@@ -45,6 +46,11 @@ KTP Banner は、KantanPro 画面にバナー広告を表示するためのプ�
 * キャッシュを削除して再読み込みしている
 
 == Changelog ==
+
+= 1.2.1 (2026-05-25) =
+
+* ブロックエディター用「KTP Banner」ブロックを追加（本文の任意位置に挿入可能）
+* 幅広・全幅アライメントに対応
 
 = 1.1.3 (2026-05-25) =
 

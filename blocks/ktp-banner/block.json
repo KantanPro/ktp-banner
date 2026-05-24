@@ -1,0 +1,21 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "ktp-banner/banner",
+	"title": "KTP Banner",
+	"category": "widgets",
+	"icon": "format-image",
+	"description": "KTP Banner メニューで登録したバナー広告を表示します。複数登録時はローテーションします。",
+	"keywords": [ "banner", "ktp", "kantanpro", "広告" ],
+	"textdomain": "ktp-banner",
+	"attributes": {
+		"align": {
+			"type": "string"
+		}
+	},
+	"supports": {
+		"html": false,
+		"align": [ "wide", "full" ],
+		"customClassName": true
+	}
+}

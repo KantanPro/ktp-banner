@@ -1,0 +1,12 @@
+.ktp-banner-block-editor .components-placeholder {
+	min-height: 120px;
+}
+
+.ktp-banner-block-editor .components-placeholder__fieldset {
+	width: 100%;
+}
+
+.ktp-banner-block-editor .ktp-banner,
+.ktp-banner-block-editor .ktp-banner-rotator {
+	max-width: 100%;
+}
