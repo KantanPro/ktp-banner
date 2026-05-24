@@ -3,27 +3,6 @@
 
 	let originalSendAttachment = null;
 
-	function getImageField() {
-		return $( '#ktp-banner-image-url' );
-	}
-
-	function getImagePreview() {
-		return $( '#ktp-banner-image-preview' );
-	}
-
-	function updatePreview( imageUrl ) {
-		const $preview = getImagePreview();
-		if ( ! $preview.length ) {
-			return;
-		}
-
-		if ( imageUrl ) {
-			$preview.attr( 'src', imageUrl ).show();
-		} else {
-			$preview.attr( 'src', '' ).hide();
-		}
-	}
-
 	function resolveAttachmentUrl( attachment ) {
 		if ( ! attachment ) {
 			return '';
@@ -60,15 +39,30 @@
 		return 0;
 	}
 
-	function setImageUrl( imageUrl ) {
-		if ( ! imageUrl ) {
+	function updatePreview( $item, imageUrl ) {
+		const $preview = $item.find( '.ktp-banner-image-preview' );
+		if ( ! $preview.length ) {
 			return;
 		}
-		getImageField().val( imageUrl ).trigger( 'change' );
-		updatePreview( imageUrl );
+
+		if ( imageUrl ) {
+			$preview.attr( 'src', imageUrl ).show();
+		} else {
+			$preview.attr( 'src', '' ).hide();
+		}
 	}
 
-	function fetchUrlByAttachmentId( attachmentId ) {
+	function setImageUrl( $item, imageUrl ) {
+		const $field = $item.find( '.ktp-banner-image-url' );
+		if ( ! $field.length ) {
+			return;
+		}
+
+		$field.val( imageUrl ).trigger( 'change' );
+		updatePreview( $item, imageUrl );
+	}
+
+	function fetchUrlByAttachmentId( $item, attachmentId ) {
 		if ( ! attachmentId || ! wp.media || ! wp.media.attachment ) {
 			return;
 		}
@@ -81,11 +75,11 @@
 		attachmentModel.fetch().then( function() {
 			const attrs = attachmentModel.attributes || {};
 			const imageUrl = resolveAttachmentUrl( attrs );
-			setImageUrl( imageUrl );
+			setImageUrl( $item, imageUrl );
 		} );
 	}
 
-	function applySelectedImage( selection ) {
+	function applySelectedImage( $item, selection ) {
 		if ( ! selection || ! selection.first ) {
 			return;
 		}
@@ -99,75 +93,144 @@
 		const imageUrl = resolveAttachmentUrl( attachment );
 		if ( ! imageUrl ) {
 			const attachmentId = resolveAttachmentId( attachment );
-			fetchUrlByAttachmentId( attachmentId );
+			fetchUrlByAttachmentId( $item, attachmentId );
 			return;
 		}
 
-		setImageUrl( imageUrl );
+		setImageUrl( $item, imageUrl );
+	}
+
+	function openMediaLibrary( $item ) {
+		if ( typeof wp === 'undefined' || ! wp.media ) {
+			window.alert(
+				window.ktpBannerAdmin && window.ktpBannerAdmin.media_error
+					? window.ktpBannerAdmin.media_error
+					: 'Media library unavailable.'
+			);
+			return;
+		}
+
+		const $trigger = $item.find( '.ktp-banner-select-image' );
+
+		if ( wp.media.editor && wp.media.editor.open ) {
+			if ( null === originalSendAttachment ) {
+				originalSendAttachment = wp.media.editor.send.attachment;
+			}
+
+			wp.media.editor.send.attachment = function( props, attachment ) {
+				const imageUrl = resolveAttachmentUrl( attachment );
+				if ( imageUrl ) {
+					setImageUrl( $item, imageUrl );
+				} else {
+					const attachmentId = resolveAttachmentId( attachment );
+					fetchUrlByAttachmentId( $item, attachmentId );
+				}
+
+				if ( originalSendAttachment ) {
+					wp.media.editor.send.attachment = originalSendAttachment;
+				}
+			};
+
+			wp.media.editor.open( $trigger );
+			return;
+		}
+
+		const mediaFrame = wp.media( {
+			title: window.ktpBannerAdmin && window.ktpBannerAdmin.title ? window.ktpBannerAdmin.title : 'バナー画像を選択',
+			button: {
+				text: window.ktpBannerAdmin && window.ktpBannerAdmin.button_text ? window.ktpBannerAdmin.button_text : 'この画像を使用',
+			},
+			library: {
+				type: 'image',
+			},
+			multiple: false,
+		} );
+
+		mediaFrame.on( 'select', function() {
+			const selection = mediaFrame.state().get( 'selection' );
+			applySelectedImage( $item, selection );
+		} );
+
+		mediaFrame.on( 'insert', function() {
+			const selection = mediaFrame.state().get( 'selection' );
+			applySelectedImage( $item, selection );
+		} );
+
+		mediaFrame.open();
+	}
+
+	function reindexBannerItems() {
+		$( '#ktp-banner-items .ktp-banner-item' ).each( function( index ) {
+			const $item = $( this );
+			$item.attr( 'data-index', index );
+			$item.find( '.ktp-banner-item-title' ).text(
+				( window.ktpBannerAdmin && window.ktpBannerAdmin.item_label ? window.ktpBannerAdmin.item_label : 'バナー' ) + ' #' + ( index + 1 )
+			);
+
+			$item.find( '[name]' ).each( function() {
+				const $field = $( this );
+				const name = $field.attr( 'name' );
+				if ( ! name || name.indexOf( 'ktp_banner_options[banners][' ) !== 0 ) {
+					return;
+				}
+				const fieldKey = name.replace( /^ktp_banner_options\[banners\]\[\d+\]\[/, '' ).replace( /\]$/, '' );
+				$field.attr( 'name', 'ktp_banner_options[banners][' + index + '][' + fieldKey + ']' );
+			} );
+		} );
+	}
+
+	function createBannerItemFromTemplate() {
+		const template = $( '#ktp-banner-item-template' ).html();
+		if ( ! template ) {
+			return null;
+		}
+
+		const index = $( '#ktp-banner-items .ktp-banner-item' ).length;
+		const uniqueId = 'banner_' + Date.now() + '_' + Math.floor( Math.random() * 1000 );
+		const html = template
+			.replace( /\{\{INDEX\}\}/g, String( index ) )
+			.replace( /\{\{ID\}\}/g, uniqueId );
+
+		return $( html );
 	}
 
 	$( function() {
-		$( '#ktp-banner-select-image' ).on( 'click', function( event ) {
+		$( document ).on( 'click', '.ktp-banner-select-image', function( event ) {
 			event.preventDefault();
-			if ( typeof wp === 'undefined' || ! wp.media ) {
-				window.alert( ( window.ktpBannerAdmin && window.ktpBannerAdmin.media_error ) ? window.ktpBannerAdmin.media_error : 'Media library unavailable.' );
-				return;
-			}
-
-			// 互換性重視: 古い環境でも確実にURLを受け取れる editor API を優先
-			if ( wp.media.editor && wp.media.editor.open ) {
-				if ( null === originalSendAttachment ) {
-					originalSendAttachment = wp.media.editor.send.attachment;
-				}
-
-				wp.media.editor.send.attachment = function( props, attachment ) {
-					const imageUrl = resolveAttachmentUrl( attachment );
-					if ( imageUrl ) {
-						setImageUrl( imageUrl );
-					} else {
-						const attachmentId = resolveAttachmentId( attachment );
-						fetchUrlByAttachmentId( attachmentId );
-					}
-
-					// 他画面への副作用を防ぐため、処理後に元へ戻す
-					if ( originalSendAttachment ) {
-						wp.media.editor.send.attachment = originalSendAttachment;
-					}
-				};
-
-				wp.media.editor.open( $( '#ktp-banner-select-image' ) );
-				return;
-			}
-
-			const mediaFrame = wp.media( {
-				title: ( window.ktpBannerAdmin && window.ktpBannerAdmin.title ) ? window.ktpBannerAdmin.title : 'バナー画像を選択',
-				button: {
-					text: ( window.ktpBannerAdmin && window.ktpBannerAdmin.button_text ) ? window.ktpBannerAdmin.button_text : 'この画像を使用'
-				},
-				library: {
-					type: 'image'
-				},
-				multiple: false
-			} );
-
-			mediaFrame.on( 'select', function() {
-				const selection = mediaFrame.state().get( 'selection' );
-				applySelectedImage( selection );
-			} );
-
-			// 一部環境では insert イベントのみ発火するため両対応
-			mediaFrame.on( 'insert', function() {
-				const selection = mediaFrame.state().get( 'selection' );
-				applySelectedImage( selection );
-			} );
-
-			mediaFrame.open();
+			const $item = $( this ).closest( '.ktp-banner-item' );
+			openMediaLibrary( $item );
 		} );
 
-		$( '#ktp-banner-clear-image' ).on( 'click', function( event ) {
+		$( document ).on( 'click', '.ktp-banner-clear-image', function( event ) {
 			event.preventDefault();
-			getImageField().val( '' );
-			updatePreview( '' );
+			const $item = $( this ).closest( '.ktp-banner-item' );
+			setImageUrl( $item, '' );
+		} );
+
+		$( '#ktp-banner-add-item' ).on( 'click', function( event ) {
+			event.preventDefault();
+			const $item = createBannerItemFromTemplate();
+			if ( ! $item ) {
+				return;
+			}
+			$( '#ktp-banner-items' ).append( $item );
+			reindexBannerItems();
+		} );
+
+		$( document ).on( 'click', '.ktp-banner-remove-item', function( event ) {
+			event.preventDefault();
+			const $items = $( '#ktp-banner-items .ktp-banner-item' );
+			if ( $items.length <= 1 ) {
+				window.alert(
+					window.ktpBannerAdmin && window.ktpBannerAdmin.remove_last_error
+						? window.ktpBannerAdmin.remove_last_error
+						: '最低1件のバナーが必要です。'
+				);
+				return;
+			}
+
+			$( this ).closest( '.ktp-banner-item' ).remove();
+			reindexBannerItems();
 		} );
 	} );
 } )( jQuery );

@@ -3,7 +3,7 @@
  * Plugin Name: KTP Banner
  * Plugin URI: https://example.com
  * Description: KantanPro 向けに任意のバナー広告を表示するプラグインです。
- * Version: 1.0.14
+ * Version: 1.1.2
  * Author: KantanPro
  * License: GPL-2.0-or-later
  * Text Domain: ktp-banner
@@ -37,10 +37,13 @@ final class KTP_Banner_Plugin {
 	 * KTP_Banner_Plugin constructor.
 	 */
 	private function __construct() {
+		add_action( 'admin_init', array( $this, 'maybe_migrate_options' ) );
 		add_action( 'admin_menu', array( $this, 'register_admin_menu' ) );
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_assets' ) );
+		add_action( 'wp_enqueue_scripts', array( $this, 'maybe_enqueue_frontend_assets' ) );
 		add_action( 'init', array( $this, 'register_display_hook_from_settings' ) );
+		add_action( 'widgets_init', array( $this, 'register_widget' ) );
 		add_action( 'admin_notices', array( $this, 'render_admin_banner_notice' ) );
 		add_filter( 'do_shortcode_tag', array( $this, 'inject_banner_into_kantanpro_shortcode_output' ), 20, 4 );
 		add_shortcode( 'ktp_banner', array( $this, 'render_banner_shortcode' ) );
@@ -52,32 +55,97 @@ final class KTP_Banner_Plugin {
 	 * @return void
 	 */
 	public static function activate() {
-		$defaults = array(
-			'enabled'        => 1,
-			'image_url'      => '',
-			'link_url'       => '',
-			'alt_text'       => '',
-			'open_new_tab'   => 1,
-			'display_admin'  => 1,
-			'display_hook'   => 'ktpwp_between_pagination_footer',
-			'frontend_hook'  => '',
-		);
-
 		if ( false === get_option( self::OPTION_KEY ) ) {
-			add_option( self::OPTION_KEY, $defaults );
+			add_option( self::OPTION_KEY, self::get_default_options() );
 		}
+	}
+
+	/**
+	 * デフォルトオプション。
+	 *
+	 * @return array
+	 */
+	private static function get_default_options() {
+		return array(
+			'enabled'            => 1,
+			'display_admin'      => 1,
+			'display_hook'       => 'ktpwp_between_pagination_footer',
+			'frontend_hook'      => '',
+			'rotation_interval'  => 5,
+			'banners'            => array(
+				array(
+					'id'           => 'banner_default',
+					'title'        => '',
+					'image_url'    => '',
+					'link_url'     => '',
+					'alt_text'     => '',
+					'open_new_tab' => 1,
+					'enabled'      => 1,
+				),
+			),
+		);
+	}
+
+	/**
+	 * 旧形式（単一バナー）から複数バナー形式へ移行する。
+	 *
+	 * @return void
+	 */
+	public function maybe_migrate_options() {
+		$options = get_option( self::OPTION_KEY, array() );
+		if ( ! is_array( $options ) ) {
+			return;
+		}
+
+		if ( ! empty( $options['banners'] ) && is_array( $options['banners'] ) ) {
+			return;
+		}
+
+		if ( empty( $options['image_url'] ) ) {
+			$options['banners'] = array(
+				array(
+					'id'           => 'banner_default',
+					'title'        => '',
+					'image_url'    => '',
+					'link_url'     => '',
+					'alt_text'     => '',
+					'open_new_tab' => 1,
+					'enabled'      => 1,
+				),
+			);
+		} else {
+			$options['banners'] = array(
+				array(
+					'id'           => 'banner_migrated',
+					'title'        => '',
+					'image_url'    => isset( $options['image_url'] ) ? $options['image_url'] : '',
+					'link_url'     => isset( $options['link_url'] ) ? $options['link_url'] : '',
+					'alt_text'     => isset( $options['alt_text'] ) ? $options['alt_text'] : '',
+					'open_new_tab' => ! empty( $options['open_new_tab'] ) ? 1 : 0,
+					'enabled'      => 1,
+				),
+			);
+		}
+
+		if ( ! isset( $options['rotation_interval'] ) ) {
+			$options['rotation_interval'] = 5;
+		}
+
+		update_option( self::OPTION_KEY, $options );
 	}
 
 	/**
 	 * @return void
 	 */
 	public function register_admin_menu() {
-		add_options_page(
+		add_menu_page(
 			__( 'KTP Banner 設定', 'ktp-banner' ),
 			__( 'KTP Banner', 'ktp-banner' ),
 			'manage_options',
 			'ktp-banner',
-			array( $this, 'render_settings_page' )
+			array( $this, 'render_settings_page' ),
+			'dashicons-format-image',
+			58
 		);
 	}
 
@@ -99,14 +167,12 @@ final class KTP_Banner_Plugin {
 		);
 
 		$fields = array(
-			'enabled'        => __( '有効化', 'ktp-banner' ),
-			'image_url'      => __( '画像URL', 'ktp-banner' ),
-			'link_url'       => __( 'リンクURL', 'ktp-banner' ),
-			'alt_text'       => __( '代替テキスト', 'ktp-banner' ),
-			'open_new_tab'   => __( '新しいタブで開く', 'ktp-banner' ),
-			'display_admin'  => __( 'KantanPro管理画面で表示', 'ktp-banner' ),
-			'frontend_hook'  => __( 'サイト全体の表示位置（KantanProなし向け）', 'ktp-banner' ),
-			'display_hook'   => __( '追加表示フック名（任意）', 'ktp-banner' ),
+			'enabled'           => __( '有効化', 'ktp-banner' ),
+			'display_admin'     => __( 'KantanPro管理画面で表示', 'ktp-banner' ),
+			'frontend_hook'     => __( 'サイト全体の表示位置（KantanProなし向け）', 'ktp-banner' ),
+			'display_hook'      => __( '追加表示フック名（任意）', 'ktp-banner' ),
+			'rotation_interval' => __( 'ローテーション間隔（秒）', 'ktp-banner' ),
+			'banners'           => __( 'バナー一覧', 'ktp-banner' ),
 		);
 
 		foreach ( $fields as $field_key => $label ) {
@@ -130,7 +196,7 @@ final class KTP_Banner_Plugin {
 	 */
 	public function enqueue_admin_assets( $hook_suffix ) {
 		$page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
-		if ( 'ktp-banner' !== $page && 'settings_page_ktp-banner' !== $hook_suffix ) {
+		if ( 'ktp-banner' !== $page && 'toplevel_page_ktp-banner' !== $hook_suffix ) {
 			return;
 		}
 
@@ -139,18 +205,59 @@ final class KTP_Banner_Plugin {
 			'ktp-banner-admin',
 			plugins_url( 'js/ktp-banner-admin.js', __FILE__ ),
 			array( 'jquery', 'media-editor', 'media-views' ),
-			'1.1.3',
+			'1.2.0',
 			true
 		);
 		wp_localize_script(
 			'ktp-banner-admin',
 			'ktpBannerAdmin',
 			array(
-				'title'       => __( 'バナー画像を選択', 'ktp-banner' ),
-				'button_text' => __( 'この画像を使用', 'ktp-banner' ),
-				'media_error' => __( 'メディアライブラリの読み込みに失敗しました。ページを再読み込みしてください。', 'ktp-banner' ),
+				'title'             => __( 'バナー画像を選択', 'ktp-banner' ),
+				'button_text'       => __( 'この画像を使用', 'ktp-banner' ),
+				'media_error'       => __( 'メディアライブラリの読み込みに失敗しました。ページを再読み込みしてください。', 'ktp-banner' ),
+				'item_label'        => __( 'バナー', 'ktp-banner' ),
+				'remove_last_error' => __( '最低1件のバナーが必要です。', 'ktp-banner' ),
 			)
 		);
+	}
+
+	/**
+	 * 複数バナーのローテーション用アセットを必要時のみ読み込む。
+	 *
+	 * @return void
+	 */
+	public function maybe_enqueue_frontend_assets() {
+		if ( is_admin() || ! $this->should_load_rotation_assets() ) {
+			return;
+		}
+
+		wp_enqueue_style(
+			'ktp-banner-frontend',
+			plugins_url( 'css/ktp-banner-frontend.css', __FILE__ ),
+			array(),
+			'1.1.0'
+		);
+		wp_enqueue_script(
+			'ktp-banner-frontend',
+			plugins_url( 'js/ktp-banner-frontend.js', __FILE__ ),
+			array(),
+			'1.1.0',
+			true
+		);
+	}
+
+	/**
+	 * ローテーション用アセットの読み込みが必要か。
+	 *
+	 * @return bool
+	 */
+	private function should_load_rotation_assets() {
+		$options = $this->get_options();
+		if ( empty( $options['enabled'] ) ) {
+			return false;
+		}
+
+		return count( $this->get_active_banners( $options ) ) > 1;
 	}
 
 	/**
@@ -159,21 +266,76 @@ final class KTP_Banner_Plugin {
 	 * @return array
 	 */
 	public function sanitize_options( $input ) {
+		if ( ! is_array( $input ) ) {
+			return self::get_default_options();
+		}
+
 		$frontend_raw = isset( $input['frontend_hook'] ) ? $input['frontend_hook'] : '';
 		$frontend_ok  = in_array( $frontend_raw, array( 'wp_footer', 'wp_body_open' ), true ) ? $frontend_raw : '';
 
+		$rotation_interval = isset( $input['rotation_interval'] ) ? absint( $input['rotation_interval'] ) : 5;
+		$rotation_interval = max( 2, min( 60, $rotation_interval ) );
+
 		$output = array(
-			'enabled'        => empty( $input['enabled'] ) ? 0 : 1,
-			'image_url'      => empty( $input['image_url'] ) ? '' : esc_url_raw( $input['image_url'] ),
-			'link_url'       => empty( $input['link_url'] ) ? '' : esc_url_raw( $input['link_url'] ),
-			'alt_text'       => empty( $input['alt_text'] ) ? '' : sanitize_text_field( $input['alt_text'] ),
-			'open_new_tab'   => empty( $input['open_new_tab'] ) ? 0 : 1,
-			'display_admin'  => empty( $input['display_admin'] ) ? 0 : 1,
-			'frontend_hook'  => $frontend_ok,
-			'display_hook'   => empty( $input['display_hook'] ) ? 'ktpwp_between_pagination_footer' : sanitize_key( $input['display_hook'] ),
+			'enabled'           => empty( $input['enabled'] ) ? 0 : 1,
+			'display_admin'     => empty( $input['display_admin'] ) ? 0 : 1,
+			'frontend_hook'     => $frontend_ok,
+			'display_hook'      => empty( $input['display_hook'] ) ? 'ktpwp_between_pagination_footer' : sanitize_key( $input['display_hook'] ),
+			'rotation_interval' => $rotation_interval,
+			'banners'           => array(),
 		);
 
+		$banners_input = isset( $input['banners'] ) && is_array( $input['banners'] ) ? $input['banners'] : array();
+		foreach ( $banners_input as $banner_input ) {
+			if ( ! is_array( $banner_input ) ) {
+				continue;
+			}
+
+			$banner = $this->sanitize_banner_item( $banner_input );
+			if ( '' === $banner['image_url'] ) {
+				continue;
+			}
+
+			$output['banners'][] = $banner;
+		}
+
+		if ( empty( $output['banners'] ) ) {
+			$output['banners'][] = array(
+				'id'           => 'banner_' . wp_generate_password( 8, false, false ),
+				'title'        => '',
+				'image_url'    => '',
+				'link_url'     => '',
+				'alt_text'     => '',
+				'open_new_tab' => 1,
+				'enabled'      => 1,
+			);
+		}
+
 		return $output;
+	}
+
+	/**
+	 * 単一バナー設定をサニタイズする。
+	 *
+	 * @param array $banner_input 入力値
+	 *
+	 * @return array
+	 */
+	private function sanitize_banner_item( $banner_input ) {
+		$id = isset( $banner_input['id'] ) ? sanitize_key( $banner_input['id'] ) : '';
+		if ( '' === $id ) {
+			$id = 'banner_' . wp_generate_password( 8, false, false );
+		}
+
+		return array(
+			'id'           => $id,
+			'title'        => isset( $banner_input['title'] ) ? sanitize_text_field( $banner_input['title'] ) : '',
+			'image_url'    => empty( $banner_input['image_url'] ) ? '' : esc_url_raw( $banner_input['image_url'] ),
+			'link_url'     => empty( $banner_input['link_url'] ) ? '' : esc_url_raw( $banner_input['link_url'] ),
+			'alt_text'     => empty( $banner_input['alt_text'] ) ? '' : sanitize_text_field( $banner_input['alt_text'] ),
+			'open_new_tab' => empty( $banner_input['open_new_tab'] ) ? 0 : 1,
+			'enabled'      => empty( $banner_input['enabled'] ) ? 0 : 1,
+		);
 	}
 
 	/**
@@ -189,7 +351,6 @@ final class KTP_Banner_Plugin {
 
 		switch ( $field_key ) {
 			case 'enabled':
-			case 'open_new_tab':
 			case 'display_admin':
 				printf(
 					'<label><input type="checkbox" name="%1$s" value="1" %2$s /> %3$s</label>',
@@ -198,29 +359,17 @@ final class KTP_Banner_Plugin {
 					esc_html__( '有効', 'ktp-banner' )
 				);
 				break;
-			case 'image_url':
+			case 'rotation_interval':
 				printf(
-					'<input type="url" class="regular-text" id="ktp-banner-image-url" name="%1$s" value="%2$s" placeholder="https://example.com/" />',
+					'<input type="number" class="small-text" min="2" max="60" step="1" name="%1$s" value="%2$d" /> %3$s',
 					esc_attr( $name_attr ),
-					esc_attr( $value )
+					max( 2, min( 60, (int) $value ) ),
+					esc_html__( '秒', 'ktp-banner' )
 				);
-				echo ' <button type="button" class="button" id="ktp-banner-select-image">' . esc_html__( '画像を選択', 'ktp-banner' ) . '</button>';
-				echo ' <button type="button" class="button" id="ktp-banner-clear-image">' . esc_html__( 'クリア', 'ktp-banner' ) . '</button>';
-				echo '<div style="margin-top:10px;">';
-				if ( '' !== $value ) {
-					echo '<img id="ktp-banner-image-preview" src="' . esc_url( $value ) . '" alt="" style="max-width:300px;height:auto;border:1px solid #ddd;padding:4px;background:#fff;" />';
-				} else {
-					echo '<img id="ktp-banner-image-preview" src="" alt="" style="display:none;max-width:300px;height:auto;border:1px solid #ddd;padding:4px;background:#fff;" />';
-				}
-				echo '</div>';
-				echo '<p class="description">' . esc_html__( '「画像を選択」からアップロード、またはメディアライブラリ（ギャラリー）から選択できます。', 'ktp-banner' ) . '</p>';
+				echo '<p class="description">' . esc_html__( '複数バナー登録時、指定秒数ごとに切り替えて表示します（2〜60秒）。', 'ktp-banner' ) . '</p>';
 				break;
-			case 'link_url':
-				printf(
-					'<input type="url" class="regular-text" name="%1$s" value="%2$s" placeholder="https://example.com/" />',
-					esc_attr( $name_attr ),
-					esc_attr( $value )
-				);
+			case 'banners':
+				$this->render_banners_field( $options );
 				break;
 			case 'frontend_hook':
 				$choices = array(
@@ -259,6 +408,125 @@ final class KTP_Banner_Plugin {
 	}
 
 	/**
+	 * 複数バナー入力 UI。
+	 *
+	 * @param array $options 保存済みオプション
+	 *
+	 * @return void
+	 */
+	private function render_banners_field( $options ) {
+		$banners = isset( $options['banners'] ) && is_array( $options['banners'] ) ? $options['banners'] : array();
+		if ( empty( $banners ) ) {
+			$banners = array(
+				array(
+					'id'           => 'banner_default',
+					'title'        => '',
+					'image_url'    => '',
+					'link_url'     => '',
+					'alt_text'     => '',
+					'open_new_tab' => 1,
+					'enabled'      => 1,
+				),
+			);
+		}
+		?>
+		<div id="ktp-banner-items">
+			<?php foreach ( $banners as $index => $banner ) : ?>
+				<?php $this->render_banner_item_field( (int) $index, $banner ); ?>
+			<?php endforeach; ?>
+		</div>
+		<p>
+			<button type="button" class="button" id="ktp-banner-add-item"><?php echo esc_html__( 'バナーを追加', 'ktp-banner' ); ?></button>
+		</p>
+		<p class="description"><?php echo esc_html__( '複数登録すると、表示時に自動でローテーションします。画像URLが空の行は保存されません。', 'ktp-banner' ); ?></p>
+		<script type="text/html" id="ktp-banner-item-template">
+			<?php
+			$this->render_banner_item_field(
+				'{{INDEX}}',
+				array(
+					'id'           => '{{ID}}',
+					'title'        => '',
+					'image_url'    => '',
+					'link_url'     => '',
+					'alt_text'     => '',
+					'open_new_tab' => 1,
+					'enabled'      => 1,
+				)
+			);
+			?>
+		</script>
+		<?php
+	}
+
+	/**
+	 * 単一バナー行 UI。
+	 *
+	 * @param int|string $index  インデックス
+	 * @param array      $banner バナー設定
+	 *
+	 * @return void
+	 */
+	private function render_banner_item_field( $index, $banner ) {
+		$defaults = array(
+			'id'           => 'banner_' . wp_generate_password( 8, false, false ),
+			'title'        => '',
+			'image_url'    => '',
+			'link_url'     => '',
+			'alt_text'     => '',
+			'open_new_tab' => 1,
+			'enabled'      => 1,
+		);
+		$banner   = wp_parse_args( $banner, $defaults );
+		$label    = is_numeric( $index ) ? ( (int) $index + 1 ) : '{{INDEX}}';
+		?>
+		<div class="ktp-banner-item" data-index="<?php echo esc_attr( (string) $index ); ?>" style="border:1px solid #ccd0d4;background:#fff;padding:16px;margin:0 0 12px;max-width:860px;">
+			<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+				<strong class="ktp-banner-item-title"><?php echo esc_html( sprintf( __( 'バナー #%s', 'ktp-banner' ), $label ) ); ?></strong>
+				<button type="button" class="button-link-delete ktp-banner-remove-item"><?php echo esc_html__( '削除', 'ktp-banner' ); ?></button>
+			</div>
+			<input type="hidden" name="<?php echo esc_attr( self::OPTION_KEY . '[banners][' . $index . '][id]' ); ?>" value="<?php echo esc_attr( $banner['id'] ); ?>" />
+			<p>
+				<label><?php echo esc_html__( '管理用タイトル（任意）', 'ktp-banner' ); ?></label><br />
+				<input type="text" class="regular-text" name="<?php echo esc_attr( self::OPTION_KEY . '[banners][' . $index . '][title]' ); ?>" value="<?php echo esc_attr( $banner['title'] ); ?>" />
+			</p>
+			<p>
+				<label><?php echo esc_html__( '画像URL', 'ktp-banner' ); ?></label><br />
+				<input type="url" class="regular-text ktp-banner-image-url" name="<?php echo esc_attr( self::OPTION_KEY . '[banners][' . $index . '][image_url]' ); ?>" value="<?php echo esc_attr( $banner['image_url'] ); ?>" placeholder="https://example.com/" />
+				<button type="button" class="button ktp-banner-select-image"><?php echo esc_html__( '画像を選択', 'ktp-banner' ); ?></button>
+				<button type="button" class="button ktp-banner-clear-image"><?php echo esc_html__( 'クリア', 'ktp-banner' ); ?></button>
+			</p>
+			<div style="margin:0 0 12px;">
+				<?php if ( '' !== $banner['image_url'] ) : ?>
+					<img class="ktp-banner-image-preview" src="<?php echo esc_url( $banner['image_url'] ); ?>" alt="" style="max-width:300px;height:auto;border:1px solid #ddd;padding:4px;background:#fff;" />
+				<?php else : ?>
+					<img class="ktp-banner-image-preview" src="" alt="" style="display:none;max-width:300px;height:auto;border:1px solid #ddd;padding:4px;background:#fff;" />
+				<?php endif; ?>
+			</div>
+			<p>
+				<label><?php echo esc_html__( 'リンクURL', 'ktp-banner' ); ?></label><br />
+				<input type="url" class="regular-text" name="<?php echo esc_attr( self::OPTION_KEY . '[banners][' . $index . '][link_url]' ); ?>" value="<?php echo esc_attr( $banner['link_url'] ); ?>" placeholder="https://example.com/" />
+			</p>
+			<p>
+				<label><?php echo esc_html__( '代替テキスト', 'ktp-banner' ); ?></label><br />
+				<input type="text" class="regular-text" name="<?php echo esc_attr( self::OPTION_KEY . '[banners][' . $index . '][alt_text]' ); ?>" value="<?php echo esc_attr( $banner['alt_text'] ); ?>" />
+			</p>
+			<p>
+				<label>
+					<input type="checkbox" name="<?php echo esc_attr( self::OPTION_KEY . '[banners][' . $index . '][open_new_tab]' ); ?>" value="1" <?php checked( 1, (int) $banner['open_new_tab'] ); ?> />
+					<?php echo esc_html__( '新しいタブで開く', 'ktp-banner' ); ?>
+				</label>
+			</p>
+			<p>
+				<label>
+					<input type="checkbox" name="<?php echo esc_attr( self::OPTION_KEY . '[banners][' . $index . '][enabled]' ); ?>" value="1" <?php checked( 1, (int) $banner['enabled'] ); ?> />
+					<?php echo esc_html__( 'このバナーを有効', 'ktp-banner' ); ?>
+				</label>
+			</p>
+		</div>
+		<?php
+	}
+
+	/**
 	 * @return void
 	 */
 	public function render_settings_page() {
@@ -268,7 +536,7 @@ final class KTP_Banner_Plugin {
 		?>
 		<div class="wrap">
 			<h1><?php echo esc_html__( 'KTP Banner 設定', 'ktp-banner' ); ?></h1>
-			<p><?php echo esc_html__( 'KantanPro 画面向けのバナー表示を設定します。', 'ktp-banner' ); ?></p>
+			<p><?php echo esc_html__( 'KantanPro 画面向けのバナー表示を設定します。複数バナーを登録するとローテーション表示されます。', 'ktp-banner' ); ?></p>
 			<form method="post" action="options.php">
 				<?php
 				settings_fields( 'ktp_banner_group' );
@@ -278,6 +546,7 @@ final class KTP_Banner_Plugin {
 			</form>
 			<h2><?php echo esc_html__( '利用方法', 'ktp-banner' ); ?></h2>
 			<p><?php echo esc_html__( 'ショートコード: [ktp_banner]', 'ktp-banner' ); ?></p>
+			<p><?php echo esc_html__( 'ウィジェット: 外観 > ウィジェット から「KTP Banner」を追加', 'ktp-banner' ); ?></p>
 		</div>
 		<?php
 	}
@@ -296,7 +565,33 @@ final class KTP_Banner_Plugin {
 			'ktp_banner'
 		);
 
-		return $this->get_banner_html( sanitize_html_class( $atts['class'] ), true );
+		$extra_class = 'ktp-banner-shortcode';
+		if ( '' !== $atts['class'] ) {
+			$extra_class .= ' ' . sanitize_html_class( $atts['class'] );
+		}
+
+		return $this->get_banner_markup( $extra_class, true );
+	}
+
+	/**
+	 * ウィジェット等の明示配置向けにバナー HTML を返す。
+	 *
+	 * @param string $extra_class 追加クラス
+	 * @param bool   $allow_kantanproex KantanProEX 環境でも表示を許可するか
+	 *
+	 * @return string
+	 */
+	public function get_banner_markup( $extra_class = '', $allow_kantanproex = false, $enable_rotation = true ) {
+		return $this->get_banner_html( $extra_class, $allow_kantanproex, $enable_rotation );
+	}
+
+	/**
+	 * KTP Banner ウィジェットを登録する。
+	 *
+	 * @return void
+	 */
+	public function register_widget() {
+		register_widget( 'KTP_Banner_Widget' );
 	}
 
 	/**
@@ -325,7 +620,8 @@ final class KTP_Banner_Plugin {
 			false !== strpos( $output, 'ktp-before-header-banner' ) ||
 			false !== strpos( $output, 'ktp-banner-hook' ) ||
 			false !== strpos( $output, 'ktp-banner-fallback' ) ||
-			false !== strpos( $output, 'ktp-banner-shortcode-inject' )
+			false !== strpos( $output, 'ktp-banner-shortcode-inject' ) ||
+			false !== strpos( $output, 'ktp-banner-rotator' )
 		) {
 			return $output;
 		}
@@ -355,7 +651,7 @@ final class KTP_Banner_Plugin {
 			return;
 		}
 
-		$html = $this->get_banner_html( 'ktp-banner-admin-notice' );
+		$html = $this->get_banner_html( 'ktp-banner-admin-notice', false, false );
 		if ( '' === $html ) {
 			return;
 		}
@@ -378,21 +674,50 @@ final class KTP_Banner_Plugin {
 	 * @return array
 	 */
 	private function get_options() {
-		$defaults = array(
-			'enabled'        => 1,
-			'image_url'      => '',
-			'link_url'       => '',
-			'alt_text'       => '',
-			'open_new_tab'   => 1,
-			'display_admin'  => 1,
-			'display_hook'   => 'ktpwp_between_pagination_footer',
-			'frontend_hook'  => '',
-		);
+		$defaults = self::get_default_options();
+		$options  = get_option( self::OPTION_KEY, array() );
+		$options  = wp_parse_args( $options, $defaults );
 
-		$options = get_option( self::OPTION_KEY, array() );
-		$options = wp_parse_args( $options, $defaults );
+		if ( empty( $options['banners'] ) || ! is_array( $options['banners'] ) ) {
+			$options['banners'] = $defaults['banners'];
+		}
 
 		return $options;
+	}
+
+	/**
+	 * 表示対象の有効バナー一覧を返す。
+	 *
+	 * @param array|null $options オプション（省略時は取得）
+	 *
+	 * @return array
+	 */
+	private function get_active_banners( $options = null ) {
+		if ( null === $options ) {
+			$options = $this->get_options();
+		}
+
+		$banners = isset( $options['banners'] ) && is_array( $options['banners'] ) ? $options['banners'] : array();
+		$active  = array();
+
+		foreach ( $banners as $banner ) {
+			if ( ! is_array( $banner ) ) {
+				continue;
+			}
+
+			if ( empty( $banner['enabled'] ) ) {
+				continue;
+			}
+
+			$image_url = isset( $banner['image_url'] ) ? esc_url( $banner['image_url'] ) : '';
+			if ( '' === $image_url ) {
+				continue;
+			}
+
+			$active[] = $banner;
+		}
+
+		return $active;
 	}
 
 	/**
@@ -463,7 +788,7 @@ final class KTP_Banner_Plugin {
 	 *
 	 * @return string
 	 */
-	private function get_banner_html( $extra_class = '', $allow_kantanproex = false ) {
+	private function get_banner_html( $extra_class = '', $allow_kantanproex = false, $enable_rotation = true ) {
 		if ( ! $allow_kantanproex && $this->is_kantanproex_active() ) {
 			return '';
 		}
@@ -474,18 +799,72 @@ final class KTP_Banner_Plugin {
 			return '';
 		}
 
-		$image_url = isset( $options['image_url'] ) ? esc_url( $options['image_url'] ) : '';
+		$banners = $this->get_active_banners( $options );
+		if ( empty( $banners ) ) {
+			return '';
+		}
+
+		if ( ! $enable_rotation ) {
+			$banner = $banners[ array_rand( $banners ) ];
+			return $this->build_banner_item_html( $banner, $extra_class );
+		}
+
+		if ( 1 === count( $banners ) ) {
+			return $this->build_banner_item_html( $banners[0], $extra_class );
+		}
+
+		$rotation_interval = isset( $options['rotation_interval'] ) ? absint( $options['rotation_interval'] ) : 5;
+		$rotation_interval = max( 2, min( 60, $rotation_interval ) );
+
+		$class = 'ktp-banner-rotator';
+		if ( '' !== $extra_class ) {
+			$class .= ' ' . sanitize_html_class( $extra_class );
+		}
+
+		$html = sprintf(
+			'<div class="%1$s" data-interval="%2$d">',
+			esc_attr( $class ),
+			$rotation_interval
+		);
+
+		foreach ( $banners as $index => $banner ) {
+			$item_class = 'ktp-banner-rotator__item';
+			if ( 0 === $index ) {
+				$item_class .= ' is-active';
+			}
+			$html .= $this->build_banner_item_html( $banner, 'ktp-banner', $item_class );
+		}
+
+		$html .= '</div>';
+
+		return $html;
+	}
+
+	/**
+	 * 単一バナーの HTML を生成する。
+	 *
+	 * @param array  $banner      バナー設定
+	 * @param string $extra_class 追加クラス
+	 * @param string $wrap_class  ラッパークラス
+	 *
+	 * @return string
+	 */
+	private function build_banner_item_html( $banner, $extra_class = '', $wrap_class = '' ) {
+		$image_url = isset( $banner['image_url'] ) ? esc_url( $banner['image_url'] ) : '';
 		if ( '' === $image_url ) {
 			return '';
 		}
 
-		$link_url = isset( $options['link_url'] ) ? esc_url( $options['link_url'] ) : '';
-		$alt_text = isset( $options['alt_text'] ) ? esc_attr( $options['alt_text'] ) : '';
-		$target   = ! empty( $options['open_new_tab'] ) ? ' target="_blank" rel="noopener noreferrer"' : '';
+		$link_url = isset( $banner['link_url'] ) ? esc_url( $banner['link_url'] ) : '';
+		$alt_text = isset( $banner['alt_text'] ) ? esc_attr( $banner['alt_text'] ) : '';
+		$target   = ! empty( $banner['open_new_tab'] ) ? ' target="_blank" rel="noopener noreferrer"' : '';
 
 		$class = 'ktp-banner';
 		if ( '' !== $extra_class ) {
 			$class .= ' ' . sanitize_html_class( $extra_class );
+		}
+		if ( '' !== $wrap_class ) {
+			$class .= ' ' . sanitize_html_class( $wrap_class );
 		}
 
 		$image_tag = sprintf(
@@ -622,6 +1001,67 @@ final class KTP_Banner_Plugin {
 
 register_activation_hook( __FILE__, array( 'KTP_Banner_Plugin', 'activate' ) );
 KTP_Banner_Plugin::instance();
+
+/**
+ * KTP Banner ウィジェット。
+ */
+class KTP_Banner_Widget extends WP_Widget {
+	/**
+	 * KTP_Banner_Widget constructor.
+	 */
+	public function __construct() {
+		parent::__construct(
+			'ktp_banner_widget',
+			__( 'KTP Banner', 'ktp-banner' ),
+			array(
+				'description' => __( '設定画面で登録したバナー広告をローテーション表示します。', 'ktp-banner' ),
+				'classname'   => 'widget_ktp_banner',
+			)
+		);
+	}
+
+	/**
+	 * フロントエンド表示。
+	 *
+	 * @param array $args     ウィジェットエリア引数
+	 * @param array $instance ウィジェット設定
+	 *
+	 * @return void
+	 */
+	public function widget( $args, $instance ) {
+		$html = KTP_Banner_Plugin::instance()->get_banner_markup( 'ktp-banner-widget', true );
+		if ( '' === $html ) {
+			return;
+		}
+
+		echo $args['before_widget']; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		echo wp_kses_post( $html );
+		echo $args['after_widget']; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+	}
+
+	/**
+	 * 管理画面フォーム。
+	 *
+	 * @param array $instance ウィジェット設定
+	 *
+	 * @return void
+	 */
+	public function form( $instance ) {
+		echo '<p>' . esc_html__( 'バナー内容は管理画面の「KTP Banner」メニューで管理します。複数登録すると自動でローテーション表示されます。', 'ktp-banner' ) . '</p>';
+	}
+
+	/**
+	 * 設定保存。
+	 *
+	 * @param array $new_instance 新しい設定
+	 * @param array $old_instance 旧設定
+	 *
+	 * @return array
+	 */
+	public function update( $new_instance, $old_instance ) {
+		return $old_instance;
+	}
+}
 
 final class KTP_Banner_Update_Checker {
 	const GITHUB_REPO = 'KantanPro/ktp-banner';

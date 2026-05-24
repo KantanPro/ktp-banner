@@ -1,0 +1,30 @@
+.ktp-banner-rotator {
+	position: relative;
+	width: 100%;
+	max-width: 100%;
+	box-sizing: border-box;
+	overflow: hidden;
+}
+
+.ktp-banner-rotator__item {
+	width: 100%;
+	max-width: 100%;
+	box-sizing: border-box;
+	transition: opacity 0.5s ease;
+}
+
+.ktp-banner-rotator__item:not(.is-active) {
+	position: absolute;
+	top: 0;
+	left: 0;
+	opacity: 0;
+	visibility: hidden;
+	pointer-events: none;
+}
+
+.ktp-banner-rotator__item.is-active {
+	position: relative;
+	opacity: 1;
+	visibility: visible;
+	pointer-events: auto;
+}

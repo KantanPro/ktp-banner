@@ -4,7 +4,7 @@ Tags: banner, ads, kantanpro
 Requires at least: 6.0
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.0.14
+Stable tag: 1.1.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -23,12 +23,14 @@ KTP Banner は、KantanPro 画面にバナー広告を表示するためのプ�
 * KantanProがないサイト向けに wp_footer / wp_body_open への任意表示
 * フック未登録時のショートコード出力フォールバック表示
 * 管理画面通知表示
+* 複数バナーの登録とローテーション表示
+* ウィジェット（外観 > ウィジェット）からの表示
 
 == Installation ==
 
 1. プラグインを `wp-content/plugins/ktp-banner` に配置します。
 2. WordPress管理画面の「プラグイン」から有効化します。
-3. 「設定 > KTP Banner」でバナー内容を保存します。
+3. 管理画面左メニューの「KTP Banner」でバナー内容を保存します。
 
 == Frequently Asked Questions ==
 
@@ -43,6 +45,26 @@ KTP Banner は、KantanPro 画面にバナー広告を表示するためのプ�
 * キャッシュを削除して再読み込みしている
 
 == Changelog ==
+
+= 1.1.2 (2026-05-25) =
+
+* WordPress ウィジェット「KTP Banner」を追加（外観 > ウィジェット）
+* 複数バナー登録とローテーション表示（2〜60秒・フェード切替）に対応
+* 管理画面にバナー一覧リピーター UI を追加（追加・削除・個別有効化）
+* 旧形式（単一バナー）設定の自動移行
+* ローテーション用フロントエンド CSS/JS を追加
+* 設定メニューをトップレベル「KTP Banner」に移動（設定サブメニューから変更）
+
+= 1.1.0 (2026-05-25) =
+
+* 複数バナーの登録に対応
+* 2件以上の有効バナーを指定秒数ごとに切り替えるローテーション表示を追加
+* 旧形式（単一バナー）の設定データを自動移行
+
+= 1.0.15 (2026-05-25) =
+
+* 外観 > ウィジェット から追加できる「KTP Banner」ウィジェットを追加
+* ウィジェット・ショートコードは KantanProEX 環境でも明示配置時に表示可能
 
 = 1.0.14 (2026-05-10) =
 
