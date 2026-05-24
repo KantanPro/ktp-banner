@@ -3,7 +3,7 @@
  * Plugin Name: KTP Banner
  * Plugin URI: https://example.com
  * Description: KantanPro 向けに任意のバナー広告を表示するプラグインです。
- * Version: 1.1.2
+ * Version: 1.1.3
  * Author: KantanPro
  * License: GPL-2.0-or-later
  * Text Domain: ktp-banner
@@ -231,19 +231,7 @@ final class KTP_Banner_Plugin {
 			return;
 		}
 
-		wp_enqueue_style(
-			'ktp-banner-frontend',
-			plugins_url( 'css/ktp-banner-frontend.css', __FILE__ ),
-			array(),
-			'1.1.0'
-		);
-		wp_enqueue_script(
-			'ktp-banner-frontend',
-			plugins_url( 'js/ktp-banner-frontend.js', __FILE__ ),
-			array(),
-			'1.1.0',
-			true
-		);
+		$this->enqueue_rotation_assets_once();
 	}
 
 	/**
@@ -828,7 +816,7 @@ final class KTP_Banner_Plugin {
 		);
 
 		foreach ( $banners as $index => $banner ) {
-			$item_class = 'ktp-banner-rotator__item';
+			$item_class = 'ktp-banner-rotator-item';
 			if ( 0 === $index ) {
 				$item_class .= ' is-active';
 			}
@@ -837,7 +825,62 @@ final class KTP_Banner_Plugin {
 
 		$html .= '</div>';
 
+		$this->enqueue_rotation_assets_once();
+
 		return $html;
+	}
+
+	/**
+	 * スペース区切りの HTML クラス文字列をサニタイズする。
+	 *
+	 * @param string $classes クラス文字列
+	 *
+	 * @return string
+	 */
+	private function sanitize_html_classes( $classes ) {
+		$parts     = preg_split( '/\s+/', trim( (string) $classes ) );
+		$sanitized = array();
+
+		foreach ( $parts as $part ) {
+			if ( '' === $part ) {
+				continue;
+			}
+
+			$class = sanitize_html_class( $part );
+			if ( '' !== $class ) {
+				$sanitized[] = $class;
+			}
+		}
+
+		return implode( ' ', array_unique( $sanitized ) );
+	}
+
+	/**
+	 * ローテーション用 CSS/JS を1リクエストにつき1回だけ読み込む。
+	 *
+	 * @return void
+	 */
+	private function enqueue_rotation_assets_once() {
+		static $enqueued = false;
+		if ( $enqueued || is_admin() ) {
+			return;
+		}
+
+		$enqueued = true;
+
+		wp_enqueue_style(
+			'ktp-banner-frontend',
+			plugins_url( 'css/ktp-banner-frontend.css', __FILE__ ),
+			array(),
+			'1.1.3'
+		);
+		wp_enqueue_script(
+			'ktp-banner-frontend',
+			plugins_url( 'js/ktp-banner-frontend.js', __FILE__ ),
+			array(),
+			'1.1.3',
+			true
+		);
 	}
 
 	/**
@@ -864,7 +907,7 @@ final class KTP_Banner_Plugin {
 			$class .= ' ' . sanitize_html_class( $extra_class );
 		}
 		if ( '' !== $wrap_class ) {
-			$class .= ' ' . sanitize_html_class( $wrap_class );
+			$class .= ' ' . $this->sanitize_html_classes( $wrap_class );
 		}
 
 		$image_tag = sprintf(

@@ -4,7 +4,7 @@ Tags: banner, ads, kantanpro
 Requires at least: 6.0
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.1.2
+Stable tag: 1.1.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -45,6 +45,12 @@ KTP Banner は、KantanPro 画面にバナー広告を表示するためのプ�
 * キャッシュを削除して再読み込みしている
 
 == Changelog ==
+
+= 1.1.3 (2026-05-25) =
+
+* バナーローテーションが動作しない不具合を修正（HTMLクラス名のサニタイズ問題）
+* ローテーション用 CSS/JS の読み込みタイミングを改善
+* 遅延読み込みコンテンツ向けに MutationObserver によるローテーター初期化を追加
 
 = 1.1.2 (2026-05-25) =
 

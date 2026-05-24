@@ -6,14 +6,14 @@
 	overflow: hidden;
 }
 
-.ktp-banner-rotator__item {
+.ktp-banner-rotator-item {
 	width: 100%;
 	max-width: 100%;
 	box-sizing: border-box;
 	transition: opacity 0.5s ease;
 }
 
-.ktp-banner-rotator__item:not(.is-active) {
+.ktp-banner-rotator-item:not(.is-active) {
 	position: absolute;
 	top: 0;
 	left: 0;
@@ -22,7 +22,7 @@
 	pointer-events: none;
 }
 
-.ktp-banner-rotator__item.is-active {
+.ktp-banner-rotator-item.is-active {
 	position: relative;
 	opacity: 1;
 	visibility: visible;
