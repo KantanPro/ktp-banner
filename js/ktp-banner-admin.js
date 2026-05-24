@@ -39,8 +39,24 @@
 		return 0;
 	}
 
-	function updatePreview( $item, imageUrl ) {
-		const $preview = $item.find( '.ktp-banner-image-preview' );
+	function getImageType( $trigger ) {
+		return $trigger.data( 'image-type' ) === 'mobile' ? 'mobile' : 'desktop';
+	}
+
+	function getImageField( $item, imageType ) {
+		return imageType === 'mobile'
+			? $item.find( '.ktp-banner-mobile-image-url' )
+			: $item.find( '.ktp-banner-image-url' );
+	}
+
+	function getImagePreview( $item, imageType ) {
+		return imageType === 'mobile'
+			? $item.find( '.ktp-banner-mobile-image-preview' )
+			: $item.find( '.ktp-banner-image-preview' );
+	}
+
+	function updatePreview( $item, imageUrl, imageType ) {
+		const $preview = getImagePreview( $item, imageType );
 		if ( ! $preview.length ) {
 			return;
 		}
@@ -52,17 +68,17 @@
 		}
 	}
 
-	function setImageUrl( $item, imageUrl ) {
-		const $field = $item.find( '.ktp-banner-image-url' );
+	function setImageUrl( $item, imageUrl, imageType ) {
+		const $field = getImageField( $item, imageType );
 		if ( ! $field.length ) {
 			return;
 		}
 
 		$field.val( imageUrl ).trigger( 'change' );
-		updatePreview( $item, imageUrl );
+		updatePreview( $item, imageUrl, imageType );
 	}
 
-	function fetchUrlByAttachmentId( $item, attachmentId ) {
+	function fetchUrlByAttachmentId( $item, attachmentId, imageType ) {
 		if ( ! attachmentId || ! wp.media || ! wp.media.attachment ) {
 			return;
 		}
@@ -75,11 +91,11 @@
 		attachmentModel.fetch().then( function() {
 			const attrs = attachmentModel.attributes || {};
 			const imageUrl = resolveAttachmentUrl( attrs );
-			setImageUrl( $item, imageUrl );
+			setImageUrl( $item, imageUrl, imageType );
 		} );
 	}
 
-	function applySelectedImage( $item, selection ) {
+	function applySelectedImage( $item, selection, imageType ) {
 		if ( ! selection || ! selection.first ) {
 			return;
 		}
@@ -93,14 +109,14 @@
 		const imageUrl = resolveAttachmentUrl( attachment );
 		if ( ! imageUrl ) {
 			const attachmentId = resolveAttachmentId( attachment );
-			fetchUrlByAttachmentId( $item, attachmentId );
+			fetchUrlByAttachmentId( $item, attachmentId, imageType );
 			return;
 		}
 
-		setImageUrl( $item, imageUrl );
+		setImageUrl( $item, imageUrl, imageType );
 	}
 
-	function openMediaLibrary( $item ) {
+	function openMediaLibrary( $item, imageType ) {
 		if ( typeof wp === 'undefined' || ! wp.media ) {
 			window.alert(
 				window.ktpBannerAdmin && window.ktpBannerAdmin.media_error
@@ -110,7 +126,10 @@
 			return;
 		}
 
-		const $trigger = $item.find( '.ktp-banner-select-image' );
+		const $trigger = $item.find( '.ktp-banner-select-image[data-image-type="' + imageType + '"]' );
+		const frameTitle = imageType === 'mobile'
+			? ( window.ktpBannerAdmin && window.ktpBannerAdmin.mobile_title ? window.ktpBannerAdmin.mobile_title : 'スマホ用バナー画像を選択' )
+			: ( window.ktpBannerAdmin && window.ktpBannerAdmin.title ? window.ktpBannerAdmin.title : 'バナー画像を選択' );
 
 		if ( wp.media.editor && wp.media.editor.open ) {
 			if ( null === originalSendAttachment ) {
@@ -120,10 +139,10 @@
 			wp.media.editor.send.attachment = function( props, attachment ) {
 				const imageUrl = resolveAttachmentUrl( attachment );
 				if ( imageUrl ) {
-					setImageUrl( $item, imageUrl );
+					setImageUrl( $item, imageUrl, imageType );
 				} else {
 					const attachmentId = resolveAttachmentId( attachment );
-					fetchUrlByAttachmentId( $item, attachmentId );
+					fetchUrlByAttachmentId( $item, attachmentId, imageType );
 				}
 
 				if ( originalSendAttachment ) {
@@ -136,7 +155,7 @@
 		}
 
 		const mediaFrame = wp.media( {
-			title: window.ktpBannerAdmin && window.ktpBannerAdmin.title ? window.ktpBannerAdmin.title : 'バナー画像を選択',
+			title: frameTitle,
 			button: {
 				text: window.ktpBannerAdmin && window.ktpBannerAdmin.button_text ? window.ktpBannerAdmin.button_text : 'この画像を使用',
 			},
@@ -148,12 +167,12 @@
 
 		mediaFrame.on( 'select', function() {
 			const selection = mediaFrame.state().get( 'selection' );
-			applySelectedImage( $item, selection );
+			applySelectedImage( $item, selection, imageType );
 		} );
 
 		mediaFrame.on( 'insert', function() {
 			const selection = mediaFrame.state().get( 'selection' );
-			applySelectedImage( $item, selection );
+			applySelectedImage( $item, selection, imageType );
 		} );
 
 		mediaFrame.open();
@@ -198,13 +217,13 @@
 		$( document ).on( 'click', '.ktp-banner-select-image', function( event ) {
 			event.preventDefault();
 			const $item = $( this ).closest( '.ktp-banner-item' );
-			openMediaLibrary( $item );
+			openMediaLibrary( $item, getImageType( $( this ) ) );
 		} );
 
 		$( document ).on( 'click', '.ktp-banner-clear-image', function( event ) {
 			event.preventDefault();
 			const $item = $( this ).closest( '.ktp-banner-item' );
-			setImageUrl( $item, '' );
+			setImageUrl( $item, '', getImageType( $( this ) ) );
 		} );
 
 		$( '#ktp-banner-add-item' ).on( 'click', function( event ) {

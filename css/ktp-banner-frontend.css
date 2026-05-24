@@ -1,3 +1,21 @@
+.widget_ktp_banner .ktp-banner,
+.widget_ktp_banner .ktp-banner-rotator,
+.widget_ktp_banner .ktp-banner picture,
+.widget_ktp_banner .ktp-banner picture img {
+	width: 100%;
+	max-width: 100%;
+	height: auto;
+	display: block;
+}
+
+.ktp-banner picture,
+.ktp-banner picture img {
+	width: 100%;
+	max-width: 100%;
+	height: auto;
+	display: block;
+}
+
 .ktp-banner-rotator {
 	position: relative;
 	width: 100%;

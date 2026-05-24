@@ -4,7 +4,7 @@ Tags: banner, ads, kantanpro
 Requires at least: 6.0
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.2.1
+Stable tag: 1.3.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -46,6 +46,22 @@ KTP Banner は、KantanPro 画面にバナー広告を表示するためのプ�
 * キャッシュを削除して再読み込みしている
 
 == Changelog ==
+
+= 1.3.3 (2026-05-25) =
+
+* ウィジェット表示でスマホ用画像が切り替わらない不具合を修正（picture/source タグのサニタイズ対応）
+* ウィジェット・フック表示時の CSS 読み込みを改善
+
+= 1.3.2 (2026-05-25) =
+
+* GitHub Release 更新通知を WordPress 標準 UI（プラグイン一覧・更新画面）に対応
+* WP Cron 経由の自動更新に対応
+* プラグイン一覧に GitHub Release へのリンクを表示
+
+= 1.3.0 (2026-05-25) =
+
+* 各バナーにスマホ用画像URL（任意）を追加
+* スマホ用画像が設定されている場合、767px以下で自動切り替え（picture 要素）
 
 = 1.2.1 (2026-05-25) =
 
