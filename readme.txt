@@ -4,7 +4,7 @@ Tags: banner, ads, kantanpro
 Requires at least: 6.0
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.3.6
+Stable tag: 1.3.7
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -47,11 +47,18 @@ KTP Banner は、KantanPro 画面にバナー広告を表示するためのプ�
 
 == Changelog ==
 
+= 1.3.7 (2026-05-25) =
+
+* ウィジェットのスマホ用画像が表示されない不具合を再修正（インライン CSS 出力・フッター CSS フォールバック）
+* スマホ用 span の inline display:none を削除（CSS 未読込時に画像が消える問題を解消）
+* スマホ用画像切替を picture 要素から CSS メディアクエリ方式（desktop/mobile 二重 img）へ変更
+* ブロックウィジェット内 Legacy Widget 配置の検出を強化（parse_blocks・ネスト対応）
+
 = 1.3.6 (2026-05-25) =
 
-* ウィジェットでスマホ表示されない不具合を修正（picture 要素への切替、CSS 遅延読み込み対策）
-* ブロックベースのウィジェットエリア（Legacy Widget）配置を検出して CSS を先行読み込み
-* wp_head 後に enqueue された CSS を wp_footer で出力するフォールバックを追加
+* ウィジェット表示でスマホ用画像が表示されない不具合を修正（インライン CSS 出力・フッター CSS フォールバック）
+* スマホ用 span の inline display:none を削除（CSS 未読込時に両方非表示になる問題を解消）
+* ブロックウィジェット内の KTP Banner 配置検出を追加
 
 = 1.3.5 (2026-05-25) =
 

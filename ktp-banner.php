@@ -3,7 +3,7 @@
  * Plugin Name: KTP Banner
  * Plugin URI: https://example.com
  * Description: KantanPro 向けに任意のバナー広告を表示するプラグインです。
- * Version: 1.3.6
+ * Version: 1.3.7
  * Author: KantanPro
  * License: GPL-2.0-or-later
  * Text Domain: ktp-banner
@@ -42,8 +42,6 @@ final class KTP_Banner_Plugin {
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_assets' ) );
 		add_action( 'wp_enqueue_scripts', array( $this, 'maybe_enqueue_frontend_assets' ) );
-		add_action( 'template_redirect', array( $this, 'prepare_frontend_assets_early' ) );
-		add_action( 'wp_footer', array( $this, 'print_late_frontend_styles' ), 1 );
 		add_action( 'init', array( $this, 'register_display_hook_from_settings' ) );
 		add_action( 'init', array( $this, 'register_banner_block' ) );
 		add_action( 'widgets_init', array( $this, 'register_widget' ) );
@@ -324,53 +322,15 @@ final class KTP_Banner_Plugin {
 			}
 
 			foreach ( $widgets as $widget_id ) {
-				if ( is_string( $widget_id ) && 0 === strpos( $widget_id, 'ktp_banner_widget-' ) ) {
+				if ( ! is_string( $widget_id ) ) {
+					continue;
+				}
+
+				if ( 0 === strpos( $widget_id, 'ktp_banner_widget-' ) ) {
 					return true;
 				}
-			}
-		}
 
-		return $this->is_ktp_banner_in_block_widgets( $sidebars_widgets );
-	}
-
-	/**
-	 * ブロックベースのウィジェットエリアに Legacy Widget として配置されているか。
-	 *
-	 * @param array|null $sidebars_widgets サイドバーとウィジェットの対応
-	 *
-	 * @return bool
-	 */
-	private function is_ktp_banner_in_block_widgets( $sidebars_widgets = null ) {
-		if ( null === $sidebars_widgets ) {
-			$sidebars_widgets = wp_get_sidebars_widgets();
-		}
-
-		if ( ! is_array( $sidebars_widgets ) ) {
-			return false;
-		}
-
-		$widget_blocks = get_option( 'widget_block', array() );
-		if ( ! is_array( $widget_blocks ) ) {
-			return false;
-		}
-
-		foreach ( $sidebars_widgets as $widgets ) {
-			if ( ! is_array( $widgets ) ) {
-				continue;
-			}
-
-			foreach ( $widgets as $widget_id ) {
-				if ( ! is_string( $widget_id ) || 0 !== strpos( $widget_id, 'block-' ) ) {
-					continue;
-				}
-
-				$number = (int) substr( $widget_id, 6 );
-				if ( empty( $widget_blocks[ $number ]['content'] ) || ! is_string( $widget_blocks[ $number ]['content'] ) ) {
-					continue;
-				}
-
-				$content = $widget_blocks[ $number ]['content'];
-				if ( false !== strpos( $content, 'wp:legacy-widget' ) && false !== strpos( $content, 'ktp_banner_widget' ) ) {
+				if ( 0 === strpos( $widget_id, 'block-' ) && $this->is_ktp_banner_in_block_widget( $widget_id ) ) {
 					return true;
 				}
 			}
@@ -380,36 +340,70 @@ final class KTP_Banner_Plugin {
 	}
 
 	/**
-	 * テンプレート描画前にフロントエンドアセットを先行読み込みする。
+	 * ブロックウィジェット内に KTP Banner レガシーウィジェットが含まれるか。
 	 *
-	 * @return void
+	 * @param string $widget_id ウィジェット ID（block-*）
+	 *
+	 * @return bool
 	 */
-	public function prepare_frontend_assets_early() {
-		if ( is_admin() || ! $this->should_enqueue_banner_frontend_assets() ) {
-			return;
+	private function is_ktp_banner_in_block_widget( $widget_id ) {
+		if ( ! preg_match( '/^block-(\d+)$/', $widget_id, $matches ) ) {
+			return false;
 		}
 
-		if ( $this->should_load_rotation_assets() ) {
-			$this->enqueue_rotation_assets_once();
-			return;
+		$block_widgets = get_option( 'widget_block', array() );
+		if ( ! is_array( $block_widgets ) || empty( $block_widgets[ $matches[1] ]['content'] ) ) {
+			return false;
 		}
 
-		$this->enqueue_banner_frontend_css_once();
+		$content = (string) $block_widgets[ $matches[1] ]['content'];
+		if ( false !== strpos( $content, 'wp:legacy-widget' ) && false !== strpos( $content, 'ktp_banner_widget' ) ) {
+			return true;
+		}
+
+		if ( ! function_exists( 'parse_blocks' ) ) {
+			return false;
+		}
+
+		foreach ( parse_blocks( $content ) as $block ) {
+			if ( $this->legacy_widget_block_is_ktp_banner( $block ) ) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**
-	 * wp_head 後に enqueue された CSS をフッターで出力する。
+	 * legacy-widget ブロックが KTP Banner か判定する（ネスト対応）。
 	 *
-	 * @return void
+	 * @param array $block ブロック配列
+	 *
+	 * @return bool
 	 */
-	public function print_late_frontend_styles() {
-		if ( is_admin() ) {
-			return;
+	private function legacy_widget_block_is_ktp_banner( $block ) {
+		if ( ! is_array( $block ) ) {
+			return false;
 		}
 
-		if ( wp_style_is( 'ktp-banner-frontend', 'enqueued' ) && ! wp_style_is( 'ktp-banner-frontend', 'done' ) ) {
-			wp_print_styles( 'ktp-banner-frontend' );
+		if ( 'core/legacy-widget' === ( $block['blockName'] ?? '' ) ) {
+			$id_base = $block['attrs']['idBase'] ?? '';
+			if ( 'ktp_banner_widget' === $id_base ) {
+				return true;
+			}
 		}
+
+		if ( empty( $block['innerBlocks'] ) || ! is_array( $block['innerBlocks'] ) ) {
+			return false;
+		}
+
+		foreach ( $block['innerBlocks'] as $inner_block ) {
+			if ( $this->legacy_widget_block_is_ktp_banner( $inner_block ) ) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**
@@ -443,10 +437,39 @@ final class KTP_Banner_Plugin {
 
 		if ( $this->should_load_rotation_assets() ) {
 			$this->enqueue_rotation_assets_once();
+		} else {
+			$this->enqueue_banner_frontend_css_once();
+		}
+
+		$this->schedule_footer_banner_styles();
+	}
+
+	/**
+	 * ウィジェット描画後に CSS が未出力なら wp_footer で出力する。
+	 *
+	 * @return void
+	 */
+	private function schedule_footer_banner_styles() {
+		static $scheduled = false;
+		if ( $scheduled ) {
 			return;
 		}
 
-		$this->enqueue_banner_frontend_css_once();
+		$scheduled = true;
+		add_action( 'wp_footer', array( $this, 'print_pending_banner_styles' ), 1 );
+	}
+
+	/**
+	 * wp_head 以降に enqueue されたバナー CSS をフッターで出力する。
+	 *
+	 * @return void
+	 */
+	public function print_pending_banner_styles() {
+		if ( ! wp_style_is( 'ktp-banner-frontend', 'enqueued' ) || wp_style_is( 'ktp-banner-frontend', 'done' ) ) {
+			return;
+		}
+
+		wp_print_styles( array( 'ktp-banner-frontend' ) );
 	}
 
 	/**
@@ -1110,11 +1133,17 @@ final class KTP_Banner_Plugin {
 
 		if ( ! $enable_rotation ) {
 			$banner = $banners[ array_rand( $banners ) ];
-			return $this->kses_banner_html( $this->build_banner_item_html( $banner, $extra_class ) );
+			return $this->wrap_banner_html(
+				$this->build_banner_item_html( $banner, $extra_class ),
+				$options
+			);
 		}
 
 		if ( 1 === count( $banners ) ) {
-			return $this->kses_banner_html( $this->build_banner_item_html( $banners[0], $extra_class ) );
+			return $this->wrap_banner_html(
+				$this->build_banner_item_html( $banners[0], $extra_class ),
+				$options
+			);
 		}
 
 		$rotation_interval = isset( $options['rotation_interval'] ) ? absint( $options['rotation_interval'] ) : 5;
@@ -1143,7 +1172,60 @@ final class KTP_Banner_Plugin {
 
 		$this->enqueue_rotation_assets_once();
 
-		return $this->kses_banner_html( $html );
+		return $this->wrap_banner_html( $html, $options );
+	}
+
+	/**
+	 * バナー HTML をラップし、必要ならレスポンシブ用インライン CSS を付与する。
+	 *
+	 * @param string $html    バナー HTML
+	 * @param array  $options プラグイン設定
+	 *
+	 * @return string
+	 */
+	private function wrap_banner_html( $html, $options ) {
+		if ( '' === $html ) {
+			return '';
+		}
+
+		$sanitized = $this->kses_banner_html( $html );
+		if ( '' === $sanitized ) {
+			return '';
+		}
+
+		if ( ! $this->has_mobile_banner_images( $options ) ) {
+			return $sanitized;
+		}
+
+		return $this->get_responsive_style_markup() . $sanitized;
+	}
+
+	/**
+	 * スマホ用画像切替 CSS（外部ファイルとインラインで共通利用）。
+	 *
+	 * @return string
+	 */
+	private function get_responsive_banner_css() {
+		return '.ktp-banner-media--desktop{display:block;width:100%;max-width:100%}.ktp-banner-media--mobile{display:none;width:100%;max-width:100%}@media (max-width:767px){.ktp-banner-media--desktop{display:none!important}.ktp-banner-media--mobile{display:block!important}}';
+	}
+
+	/**
+	 * レスポンシブ切替用インライン style を1ページ1回だけ返す。
+	 *
+	 * @return string
+	 */
+	private function get_responsive_style_markup() {
+		static $printed = false;
+		if ( $printed ) {
+			return '';
+		}
+
+		$printed = true;
+
+		return sprintf(
+			'<style id="ktp-banner-responsive-css">%s</style>',
+			$this->get_responsive_banner_css()
+		);
 	}
 
 	/**
@@ -1167,9 +1249,8 @@ final class KTP_Banner_Plugin {
 			'type'   => true,
 		);
 		$allowed['span']    = array(
-			'class'       => true,
-			'style'       => true,
-			'aria-hidden' => true,
+			'class' => true,
+			'style' => true,
 		);
 
 		if ( ! isset( $allowed['img'] ) || ! is_array( $allowed['img'] ) ) {
@@ -1241,13 +1322,12 @@ final class KTP_Banner_Plugin {
 			'ktp-banner-frontend',
 			plugins_url( 'css/ktp-banner-frontend.css', __FILE__ ),
 			array(),
-			'1.3.6'
+			'1.3.7'
 		);
 
-		wp_add_inline_style(
-			'ktp-banner-frontend',
-			'.widget_ktp_banner .ktp-banner,.widget_ktp_banner .ktp-banner-rotator,.widget_ktp_banner .ktp-banner picture,.widget_ktp_banner .ktp-banner picture img,.widget_ktp_banner .ktp-banner img{width:100%;max-width:100%;height:auto;display:block;}'
-		);
+		if ( $this->has_mobile_banner_images() ) {
+			wp_add_inline_style( 'ktp-banner-frontend', $this->get_responsive_banner_css() );
+		}
 	}
 
 	/**
@@ -1269,13 +1349,13 @@ final class KTP_Banner_Plugin {
 			'ktp-banner-frontend',
 			plugins_url( 'js/ktp-banner-frontend.js', __FILE__ ),
 			array(),
-			'1.3.6',
+			'1.3.7',
 			true
 		);
 	}
 
 	/**
-	 * バナー画像 HTML を生成する（スマホ用画像があれば picture 要素で切り替え）。
+	 * バナー画像 HTML を生成する（スマホ用画像があれば CSS で切り替え）。
 	 *
 	 * @param array $banner バナー設定
 	 *
@@ -1289,11 +1369,9 @@ final class KTP_Banner_Plugin {
 
 		if ( '' !== $mobile_image_url && $mobile_image_url !== $image_url ) {
 			return sprintf(
-				'<picture><source media="(max-width: 767px)" srcset="%1$s" /><img src="%2$s" alt="%3$s" style="%4$s" loading="lazy" decoding="async" /></picture>',
-				esc_url( $mobile_image_url ),
-				$image_url,
-				$alt_text,
-				esc_attr( $img_style )
+				'<span class="ktp-banner-media ktp-banner-media--desktop">%1$s</span><span class="ktp-banner-media ktp-banner-media--mobile">%2$s</span>',
+				$this->build_single_image_tag( $image_url, $alt_text, $img_style ),
+				$this->build_single_image_tag( $mobile_image_url, $alt_text, $img_style )
 			);
 		}
 
