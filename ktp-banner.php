@@ -3,7 +3,7 @@
  * Plugin Name: KTP Banner
  * Plugin URI: https://example.com
  * Description: KantanPro 向けに任意のバナー広告を表示するプラグインです。
- * Version: 1.3.9
+ * Version: 1.3.10
  * Author: KantanPro
  * License: GPL-2.0-or-later
  * Text Domain: ktp-banner
@@ -1649,10 +1649,13 @@ final class KTP_Banner_Update_Checker {
 		add_filter( 'site_transient_update_plugins', array( $this, 'filter_update_transient' ) );
 		add_filter( 'update_plugins_github.com', array( $this, 'filter_update_plugins_github_com' ), 10, 4 );
 		add_filter( 'plugins_api', array( $this, 'filter_plugins_api' ), 20, 3 );
-		add_filter( 'upgrader_source_selection', array( $this, 'rename_github_source' ), 10, 4 );
-		add_filter( 'upgrader_pre_download', array( $this, 'upgrader_pre_download' ), 10, 3 );
+		add_filter( 'upgrader_source_selection', array( $this, 'normalize_github_zipball_source' ), 1, 4 );
+		add_filter( 'upgrader_post_install', array( $this, 'rename_github_source_post_install' ), 9, 3 );
+		add_filter( 'upgrader_pre_install', array( $this, 'before_update' ), 10, 3 );
+		add_filter( 'upgrader_pre_download', array( $this, 'upgrader_pre_download' ), 10, 4 );
 		add_filter( 'auto_update_plugin', array( $this, 'filter_auto_update_plugin' ), 10, 2 );
 		add_action( 'upgrader_process_complete', array( $this, 'clear_release_cache' ), 10, 2 );
+		add_action( 'upgrader_process_complete', array( $this, 'handle_auto_activation' ), 10, 2 );
 		add_action( 'admin_init', array( $this, 'maybe_force_update_check' ) );
 		add_action( 'load-plugins.php', array( $this, 'maybe_refresh_on_plugins_screen' ) );
 		add_action( 'load-update-core.php', array( $this, 'maybe_refresh_on_update_core_screen' ) );
@@ -1816,22 +1819,131 @@ final class KTP_Banner_Update_Checker {
 	}
 
 	/**
-	 * GitHub ダウンロード向け HTTP 引数を調整する。
+	 * GitHub ダウンロード向け HTTP 引数を調整する／自前ダウンロード。
 	 *
-	 * @param mixed  $reply   既存応答
-	 * @param string $package パッケージ URL
-	 * @param object $upgrader アップグレーダー
+	 * @param mixed  $reply      既存応答
+	 * @param string $package    パッケージ URL
+	 * @param object $upgrader   アップグレーダー
+	 * @param array  $hook_extra フック引数
 	 *
 	 * @return mixed
 	 */
-	public function upgrader_pre_download( $reply, $package, $upgrader ) {
+	public function upgrader_pre_download( $reply, $package, $upgrader, $hook_extra = array() ) {
 		unset( $upgrader );
 
-		if ( false !== strpos( $package, 'github.com' ) ) {
+		if ( false !== $reply ) {
+			return $reply;
+		}
+
+		if ( $this->is_ktp_banner_package_request( $package, $hook_extra ) ) {
+			return $this->download_github_package( $package );
+		}
+
+		if ( $this->is_github_url( $package ) ) {
 			add_filter( 'http_request_args', array( $this, 'filter_github_download_args' ), 10, 2 );
 		}
 
-		return $reply;
+		return false;
+	}
+
+	/**
+	 * KTP Banner 自身の GitHub 更新パッケージか。
+	 *
+	 * @param string $package    パッケージ URL
+	 * @param array  $hook_extra フック引数
+	 *
+	 * @return bool
+	 */
+	private function is_ktp_banner_package_request( $package, $hook_extra ) {
+		if ( ! $this->is_github_url( $package ) ) {
+			return false;
+		}
+
+		if ( ! empty( $hook_extra['plugin'] ) && $hook_extra['plugin'] === $this->plugin_basename ) {
+			return true;
+		}
+
+		$release = $this->get_latest_release();
+		return is_array( $release ) && ! empty( $release['package'] ) && $release['package'] === $package;
+	}
+
+	/**
+	 * GitHub から ZIP をダウンロードして一時ファイルパスを返す。
+	 *
+	 * @param string $package パッケージ URL
+	 *
+	 * @return string|WP_Error
+	 */
+	private function download_github_package( $package ) {
+		if ( ! function_exists( 'wp_tempnam' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/file.php';
+		}
+
+		$response = wp_remote_get(
+			$package,
+			array(
+				'timeout'     => 300,
+				'redirection' => 5,
+				'headers'     => $this->get_github_download_headers( $package ),
+			)
+		);
+
+		if ( is_wp_error( $response ) ) {
+			return new WP_Error(
+				'download_failed',
+				sprintf(
+					/* translators: %s: error message */
+					__( 'GitHub からのダウンロードに失敗しました: %s', 'ktp-banner' ),
+					$response->get_error_message()
+				)
+			);
+		}
+
+		$status_code = wp_remote_retrieve_response_code( $response );
+		if ( 200 !== (int) $status_code ) {
+			return new WP_Error(
+				'download_failed',
+				sprintf(
+					/* translators: %d: HTTP status code */
+					__( 'GitHub からのダウンロードに失敗しました (HTTP %d)。', 'ktp-banner' ),
+					$status_code
+				)
+			);
+		}
+
+		$body = wp_remote_retrieve_body( $response );
+		if ( '' === $body || 'PK' !== substr( $body, 0, 2 ) ) {
+			return new WP_Error(
+				'download_failed',
+				__( 'GitHub から取得したファイルが ZIP 形式ではありません。', 'ktp-banner' )
+			);
+		}
+
+		$temp_file = wp_tempnam( $package );
+		if ( ! $temp_file ) {
+			return new WP_Error( 'download_failed', __( '一時ファイルを作成できませんでした。', 'ktp-banner' ) );
+		}
+
+		$written = file_put_contents( $temp_file, $body );
+		if ( false === $written ) {
+			return new WP_Error( 'download_failed', __( 'ダウンロードファイルの保存に失敗しました。', 'ktp-banner' ) );
+		}
+
+		return $temp_file;
+	}
+
+	/**
+	 * GitHub 関連 URL か。
+	 *
+	 * @param string $url URL
+	 *
+	 * @return bool
+	 */
+	private function is_github_url( $url ) {
+		return is_string( $url ) && (
+			false !== strpos( $url, 'github.com' ) ||
+			false !== strpos( $url, 'githubusercontent.com' )
+		);
 	}
 
 	/**
@@ -1843,17 +1955,84 @@ final class KTP_Banner_Update_Checker {
 	 * @return array
 	 */
 	public function filter_github_download_args( $args, $url ) {
-		if ( false === strpos( $url, 'github.com' ) ) {
+		if ( ! $this->is_github_url( $url ) ) {
 			return $args;
 		}
 
-		$args['timeout'] = 60;
+		$args['timeout'] = 300;
 		$args['headers'] = array_merge(
 			isset( $args['headers'] ) && is_array( $args['headers'] ) ? $args['headers'] : array(),
-			$this->get_github_api_headers()
+			$this->get_github_download_headers( $url )
 		);
 
 		return $args;
+	}
+
+	/**
+	 * 更新前に有効化状態を保存する。
+	 *
+	 * @param bool|WP_Error $response   応答
+	 * @param array         $hook_extra フック引数
+	 *
+	 * @return bool|WP_Error
+	 */
+	public function before_update( $response, $hook_extra ) {
+		if ( is_wp_error( $response ) || empty( $hook_extra['plugin'] ) || $hook_extra['plugin'] !== $this->plugin_basename ) {
+			return $response;
+		}
+
+		if ( ! function_exists( 'is_plugin_active' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/plugin.php';
+		}
+
+		$was_network_active = is_multisite() && is_plugin_active_for_network( $this->plugin_basename );
+		$was_active         = is_plugin_active( $this->plugin_basename ) || $was_network_active;
+
+		set_site_transient(
+			'ktp_banner_pre_update_state',
+			array(
+				'was_active'     => $was_active,
+				'network_active' => $was_network_active,
+			),
+			30 * MINUTE_IN_SECONDS
+		);
+
+		return $response;
+	}
+
+	/**
+	 * 更新完了後にプラグインを再有効化する。
+	 *
+	 * @param object $upgrader_object アップグレーダー
+	 * @param array  $options         更新オプション
+	 *
+	 * @return void
+	 */
+	public function handle_auto_activation( $upgrader_object, $options ) {
+		unset( $upgrader_object );
+
+		if ( empty( $options['action'] ) || 'update' !== $options['action'] || empty( $options['type'] ) || 'plugin' !== $options['type'] ) {
+			return;
+		}
+
+		if ( empty( $options['plugins'] ) || ! in_array( $this->plugin_basename, (array) $options['plugins'], true ) ) {
+			return;
+		}
+
+		$state = get_site_transient( 'ktp_banner_pre_update_state' );
+		if ( ! is_array( $state ) || empty( $state['was_active'] ) ) {
+			return;
+		}
+
+		if ( ! function_exists( 'activate_plugin' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/plugin.php';
+		}
+
+		if ( ! is_plugin_active( $this->plugin_basename ) ) {
+			activate_plugin( $this->plugin_basename, '', ! empty( $state['network_active'] ) );
+		}
+
+		delete_site_transient( 'ktp_banner_pre_update_state' );
 	}
 
 	/**
@@ -1959,7 +2138,7 @@ final class KTP_Banner_Update_Checker {
 	}
 
 	/**
-	 * GitHub zipball の展開フォルダをプラグインslugへ補正する。
+	 * GitHub zipball 展開直後にフォルダ名を ktp-banner へ揃える。
 	 *
 	 * @param string      $source        展開元ディレクトリ
 	 * @param string      $remote_source 一時ディレクトリ
@@ -1967,32 +2146,129 @@ final class KTP_Banner_Update_Checker {
 	 * @param array       $hook_extra    更新情報
 	 * @return string|WP_Error
 	 */
-	public function rename_github_source( $source, $remote_source, $upgrader, $hook_extra = array() ) {
-		unset( $upgrader );
+	public function normalize_github_zipball_source( $source, $remote_source, $upgrader, $hook_extra = array() ) {
+		unset( $upgrader, $remote_source );
 
-		if ( empty( $hook_extra['plugin'] ) || $hook_extra['plugin'] !== $this->plugin_basename ) {
+		if ( is_wp_error( $source ) || ! is_string( $source ) || '' === trim( $source ) ) {
 			return $source;
 		}
 
-		if ( basename( untrailingslashit( $source ) ) === $this->plugin_slug ) {
+		if ( ! empty( $hook_extra['plugin'] ) && $hook_extra['plugin'] !== $this->plugin_basename ) {
 			return $source;
 		}
+
+		$candidate = trailingslashit( $source );
+		if ( ! is_dir( $candidate ) || ! file_exists( $candidate . 'ktp-banner.php' ) ) {
+			return $source;
+		}
+
+		if ( ! function_exists( 'get_plugin_data' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/plugin.php';
+		}
+
+		$plugin_data = get_plugin_data( $candidate . 'ktp-banner.php', false, false );
+		if ( empty( $plugin_data['Name'] ) || 'KTP Banner' !== $plugin_data['Name'] ) {
+			return $source;
+		}
+
+		$src = untrailingslashit( $source );
+		if ( basename( $src ) === $this->plugin_slug ) {
+			return $source;
+		}
+
+		$dest = dirname( $src ) . '/' . $this->plugin_slug;
 
 		global $wp_filesystem;
-		if ( ! $wp_filesystem ) {
-			return $source;
+		if ( $wp_filesystem ) {
+			if ( $wp_filesystem->exists( $dest ) ) {
+				$wp_filesystem->delete( $dest, true );
+			}
+			if ( $wp_filesystem->move( $src, $dest, true ) ) {
+				return trailingslashit( $dest );
+			}
 		}
 
-		$destination = trailingslashit( $remote_source ) . $this->plugin_slug;
-		if ( $wp_filesystem->exists( $destination ) ) {
-			$wp_filesystem->delete( $destination, true );
+		if ( is_dir( $dest ) ) {
+			$this->remove_directory( $dest );
+		}
+		if ( @rename( $src, $dest ) ) {
+			return trailingslashit( $dest );
 		}
 
-		if ( ! $wp_filesystem->move( $source, $destination, true ) ) {
-			return new WP_Error( 'ktp_banner_github_source_rename_failed', __( 'KTP Banner の更新フォルダ名を補正できませんでした。', 'ktp-banner' ) );
+		return $source;
+	}
+
+	/**
+	 * post_install 段階でインストール先フォルダ名を補正する（保険）。
+	 *
+	 * @param array $response   応答
+	 * @param array $hook_extra フック引数
+	 * @param array $result     インストール結果
+	 *
+	 * @return array
+	 */
+	public function rename_github_source_post_install( $response, $hook_extra, $result ) {
+		if ( empty( $hook_extra['plugin'] ) || $hook_extra['plugin'] !== $this->plugin_basename ) {
+			return $response;
 		}
 
-		return $destination;
+		if ( empty( $result['destination'] ) || empty( $result['source'] ) ) {
+			return $response;
+		}
+
+		$expected_dir = trailingslashit( WP_PLUGIN_DIR ) . $this->plugin_slug . '/';
+		if ( untrailingslashit( $result['destination'] ) === untrailingslashit( $expected_dir ) ) {
+			return $response;
+		}
+
+		$source = trailingslashit( $result['source'] );
+		if ( 0 !== strpos( basename( untrailingslashit( $source ) ), 'ktp-banner' ) && ! file_exists( $source . 'ktp-banner.php' ) ) {
+			return $response;
+		}
+
+		if ( is_dir( $expected_dir ) ) {
+			$this->remove_directory( $expected_dir );
+		}
+
+		if ( @rename( untrailingslashit( $source ), untrailingslashit( $expected_dir ) ) ) {
+			$result['destination'] = $expected_dir;
+			return $result;
+		}
+
+		return $response;
+	}
+
+	/**
+	 * ディレクトリを再帰削除する。
+	 *
+	 * @param string $dir ディレクトリ
+	 *
+	 * @return void
+	 */
+	private function remove_directory( $dir ) {
+		if ( ! is_dir( $dir ) ) {
+			return;
+		}
+
+		$items = scandir( $dir );
+		if ( ! is_array( $items ) ) {
+			return;
+		}
+
+		foreach ( $items as $item ) {
+			if ( '.' === $item || '..' === $item ) {
+				continue;
+			}
+
+			$path = $dir . DIRECTORY_SEPARATOR . $item;
+			if ( is_dir( $path ) ) {
+				$this->remove_directory( $path );
+			} else {
+				@unlink( $path );
+			}
+		}
+
+		@rmdir( $dir );
 	}
 
 	/**
@@ -2025,8 +2301,35 @@ final class KTP_Banner_Update_Checker {
 	 * @return array
 	 */
 	private function get_github_api_headers() {
+		return $this->get_github_headers( 'application/vnd.github+json' );
+	}
+
+	/**
+	 * GitHub ダウンロード用 HTTP ヘッダー。
+	 *
+	 * @param string $url ダウンロード URL
+	 *
+	 * @return array
+	 */
+	private function get_github_download_headers( $url = '' ) {
+		$accept = 'application/vnd.github+json';
+		if ( false !== strpos( $url, 'api.github.com' ) && false !== strpos( $url, '/releases/assets/' ) ) {
+			$accept = 'application/octet-stream';
+		}
+
+		return $this->get_github_headers( $accept );
+	}
+
+	/**
+	 * GitHub 向け共通 HTTP ヘッダー。
+	 *
+	 * @param string $accept Accept ヘッダー
+	 *
+	 * @return array
+	 */
+	private function get_github_headers( $accept ) {
 		$headers = array(
-			'Accept'        => 'application/vnd.github+json',
+			'Accept'        => $accept,
 			'User-Agent'    => 'WordPress/' . get_bloginfo( 'version' ) . '; ' . get_bloginfo( 'url' ) . '; KTP-Banner-Updater',
 			'Cache-Control' => 'no-cache',
 		);
@@ -2148,7 +2451,6 @@ final class KTP_Banner_Update_Checker {
 					$download_url = esc_url_raw( $asset['browser_download_url'] );
 					break;
 				}
-				$download_url = esc_url_raw( $asset['browser_download_url'] );
 			}
 		}
 
