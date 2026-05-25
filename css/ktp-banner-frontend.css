@@ -1,35 +1,15 @@
 .widget_ktp_banner .ktp-banner,
 .widget_ktp_banner .ktp-banner-rotator,
-.widget_ktp_banner .ktp-banner-media img,
+.widget_ktp_banner .ktp-banner picture,
+.widget_ktp_banner .ktp-banner picture img,
 .widget_ktp_banner .ktp-banner img,
-.ktp-banner-media img,
+.ktp-banner picture,
+.ktp-banner picture img,
 .ktp-banner img {
 	width: 100%;
 	max-width: 100%;
 	height: auto;
 	display: block;
-}
-
-.ktp-banner-media--desktop {
-	display: block;
-	width: 100%;
-	max-width: 100%;
-}
-
-.ktp-banner-media--mobile {
-	display: none;
-	width: 100%;
-	max-width: 100%;
-}
-
-@media (max-width: 767px) {
-	.ktp-banner-media--desktop {
-		display: none !important;
-	}
-
-	.ktp-banner-media--mobile {
-		display: block !important;
-	}
 }
 
 .ktp-banner-rotator {
