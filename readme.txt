@@ -4,7 +4,7 @@ Tags: banner, ads, kantanpro
 Requires at least: 6.0
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.3.7
+Stable tag: 1.3.8
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -46,6 +46,12 @@ KTP Banner は、KantanPro 画面にバナー広告を表示するためのプ�
 * キャッシュを削除して再読み込みしている
 
 == Changelog ==
+
+= 1.3.8 (2026-05-25) =
+
+* GitHub Release 更新通知がプラグイン一覧に表示されない不具合を修正
+* Update URI 向け `update_plugins_github.com` フックを追加
+* 更新 transient の `checked` 登録・GitHub API フォールバック・トークン対応を強化
 
 = 1.3.7 (2026-05-25) =
 
